@@ -84,7 +84,6 @@ Framework → PyTorch
 Technology → CUDA
 Error type → GPU memory
 Application → VS Code
-Date → 14 Jan 2026
 ```
 
 Then it creates an embedding representing the meaning of the screenshot.
