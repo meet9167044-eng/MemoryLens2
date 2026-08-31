@@ -30,3 +30,6 @@ pytest>=8.0.0
 
 # Phase C: Local Embeddings (offline, no API key)
 sentence-transformers>=2.7.0
+
+# Phase E: Auto-Ingestion (folder watcher)
+watchdog>=4.0.0

@@ -45,13 +45,13 @@ This document breaks down the end-to-end implementation plan into actionable, st
 - `[x]` **Story Grouping**: Created `story_builder.py` to group temporally close memories into session stories.
 - `[x]` **Graph UI**: Upgraded Connections page with tabbed Knowledge Graph / Stories / Projects view with relationship type legend.
 
-## Phase E: Auto-Ingestion
+## Phase E: Auto-Ingestion ✅ COMPLETE
 *Goal: Automate screenshot ingestion by watching folders.*
 
-- `[ ]` **Folder Watcher**: Implement a daemon using `watchdog` to monitor screenshot directories (`backend/app/services/folder_watcher.py`).
-- `[ ]` **Bulk Import API**: Add a bulk import endpoint to `backend/app/api/v1/ingest.py`.
-- `[ ]` **Watch Controller API**: Add endpoints to start/stop the folder watcher (`backend/app/api/v1/watch.py`).
-- `[ ]` **Settings UI**: Add "Auto-capture" toggle in the frontend.
+- `[x]` **Folder Watcher**: Implemented daemon using `watchdog` in `backend/app/services/folder_watcher.py`.
+- `[x]` **Bulk Import API**: Added `/api/v1/ingest/bulk` endpoint to `backend/app/api/v1/ingest.py`.
+- `[x]` **Watch Controller API**: Added `/api/v1/watch`, `/watch/start`, `/watch/stop` in `backend/app/api/v1/watch.py`.
+- `[x]` **Settings UI**: Built full Settings page with Auto-capture toggle, folder path input, start/stop controls, and bulk import panel.
 
 ## Phase F: Scalability
 *Goal: Handle 10,000+ screenshots smoothly.*

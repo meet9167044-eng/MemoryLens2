@@ -216,3 +216,95 @@ def get_screenshot_image(screenshot_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Image file not found on disk.")
         
     return FileResponse(ss.file_path, media_type=ss.mime_type or "image/png")
+
+
+@router.post(
+    "/ingest/bulk",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Bulk import multiple screenshots",
+    description=(
+        "Accepts up to 50 screenshot files in a single request. "
+        "Each file is validated, deduplicated, saved, and queued for pipeline processing. "
+        "Returns a summary of accepted and rejected files."
+    ),
+)
+async def bulk_ingest_screenshots(
+    files: list[UploadFile] = File(..., description="Up to 50 screenshot files"),
+    db: Session = Depends(get_db),
+):
+    """Ingest multiple screenshots in one call. Designed for bulk imports and folder sync."""
+    if len(files) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Too many files. Max 50 per bulk request.",
+        )
+
+    accepted = []
+    rejected = []
+    duplicates = []
+
+    for upload in files:
+        filename = upload.filename or "upload.png"
+        try:
+            data = await upload.read()
+
+            if len(data) == 0:
+                rejected.append({"filename": filename, "reason": "Empty file"})
+                continue
+
+            if len(data) > MAX_FILE_SIZE:
+                rejected.append({"filename": filename, "reason": f"Exceeds {settings.MAX_FILE_SIZE_MB} MB limit"})
+                continue
+
+            try:
+                _validate_image(data, upload.content_type or "", filename)
+            except HTTPException as val_err:
+                rejected.append({"filename": filename, "reason": val_err.detail})
+                continue
+
+            # Deduplication
+            file_hash = storage.compute_hash(data)
+            existing = db.query(Screenshot).filter(Screenshot.file_hash == file_hash).first()
+            if existing:
+                duplicates.append({"filename": filename, "screenshot_id": str(existing.id)})
+                continue
+
+            # Save and create record
+            meta = storage.save(data, filename)
+            screenshot = Screenshot(
+                file_path=meta["file_path"],
+                original_filename=filename,
+                file_size_bytes=meta["file_size_bytes"],
+                file_hash=meta["file_hash"],
+                mime_type=upload.content_type,
+                status=ScreenshotStatus.PENDING,
+            )
+            db.add(screenshot)
+            db.commit()
+            db.refresh(screenshot)
+
+            sid = screenshot.id
+            threading.Thread(
+                target=_run_pipeline_safe,
+                args=(sid,),
+                daemon=True,
+                name=f"bulk-pipeline-{sid}",
+            ).start()
+
+            accepted.append({"filename": filename, "screenshot_id": str(sid)})
+
+        except Exception as exc:
+            _log.error("Bulk ingest error for %s: %s", filename, exc, exc_info=True)
+            rejected.append({"filename": filename, "reason": "Internal error"})
+
+    return {
+        "accepted": accepted,
+        "rejected": rejected,
+        "duplicates": duplicates,
+        "summary": {
+            "total": len(files),
+            "accepted_count": len(accepted),
+            "rejected_count": len(rejected),
+            "duplicate_count": len(duplicates),
+        },
+    }
