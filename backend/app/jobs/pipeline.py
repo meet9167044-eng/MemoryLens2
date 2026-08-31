@@ -383,6 +383,11 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         if screenshot.captured_at and not memory.captured_at:
             memory.captured_at = screenshot.captured_at
 
+        # Phase D: persist domain extracted by LLM
+        if result.domain and not memory.domain:
+            memory.domain = result.domain.lower().strip()
+            logger.info("domain=%r for memory %s", result.domain, memory.id)
+
         # Delete any stale entity rows and create fresh ones from LLM output
         for old_ent in list(memory.entities):
             db.delete(old_ent)

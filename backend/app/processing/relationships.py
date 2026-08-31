@@ -1,12 +1,13 @@
 """
-Phase 9 - Relationship Engine
-------------------------------
+Phase D - Knowledge Graph Relationship Engine
+----------------------------------------------
 Compares a Memory to all existing Memories and generates
 Relationship records based on:
   1. Shared entities  (same entity name, case-insensitive)
   2. Shared tags      (overlap in memory.tags JSON array)
-  3. Semantic similarity (placeholder – real cosine similarity once
-     pgvector embeddings land from Phase 7)
+  3. Semantic similarity (real cosine similarity via pgvector)
+  4. Temporal proximity (captured_at within short time window)
+  5. Domain linking    (same website/domain detected)
 
 Design rules (from spec):
   - source_id is always the lexicographically SMALLER UUID so the
@@ -18,6 +19,8 @@ Design rules (from spec):
 from __future__ import annotations
 
 import logging
+import math
+from datetime import timezone
 from typing import Optional
 from uuid import UUID
 
@@ -126,6 +129,96 @@ def _score_shared_tags(
     return score, explanation
 
 
+def _score_semantic(
+    memory_a: Memory,
+    memory_b: Memory,
+) -> tuple[float, str]:
+    """
+    Phase D: Real semantic similarity using stored pgvector embeddings.
+    Uses cosine similarity: score = 1 - cosine_distance.
+    Only runs when both memories have an embedding vector stored.
+    """
+    vec_a = memory_a.embedding
+    vec_b = memory_b.embedding
+
+    if vec_a is None or vec_b is None:
+        return 0.0, ""
+
+    # Compute cosine similarity manually from stored vectors
+    try:
+        a = list(vec_a)
+        b = list(vec_b)
+        dot = sum(x * y for x, y in zip(a, b))
+        mag_a = math.sqrt(sum(x * x for x in a))
+        mag_b = math.sqrt(sum(y * y for y in b))
+        if mag_a == 0 or mag_b == 0:
+            return 0.0, ""
+        score = dot / (mag_a * mag_b)
+        score = round(max(0.0, min(1.0, score)), 4)
+        if score >= 0.75:
+            return score, f"Semantic similarity: {score:.2%}"
+    except Exception as exc:
+        logger.debug("Semantic scoring error: %s", exc)
+
+    return 0.0, ""
+
+
+def _score_temporal(
+    memory_a: Memory,
+    memory_b: Memory,
+    window_hours: float = 2.0,
+) -> tuple[float, str]:
+    """
+    Phase D: Score based on how close two screenshots were captured in time.
+    Full score (1.0) if within 5 minutes, decays linearly to 0 at window_hours.
+    Only runs when both memories have a captured_at timestamp.
+    """
+    ts_a = memory_a.captured_at
+    ts_b = memory_b.captured_at
+    if ts_a is None or ts_b is None:
+        return 0.0, ""
+
+    # Ensure both are timezone-aware for subtraction
+    if ts_a.tzinfo is None:
+        ts_a = ts_a.replace(tzinfo=timezone.utc)
+    if ts_b.tzinfo is None:
+        ts_b = ts_b.replace(tzinfo=timezone.utc)
+
+    diff_seconds = abs((ts_a - ts_b).total_seconds())
+    window_seconds = window_hours * 3600
+
+    if diff_seconds >= window_seconds:
+        return 0.0, ""
+
+    score = round(1.0 - (diff_seconds / window_seconds), 4)
+    if score < 0.1:
+        return 0.0, ""
+
+    diff_min = diff_seconds / 60
+    explanation = f"Captured {diff_min:.0f} min apart"
+    return score, explanation
+
+
+def _score_domain(
+    memory_a: Memory,
+    memory_b: Memory,
+) -> tuple[float, str]:
+    """
+    Phase D: Score based on shared domain (website) detected.
+    Perfect score when both were captured on the same domain.
+    """
+    domain_a = (memory_a.domain or "").strip().lower()
+    domain_b = (memory_b.domain or "").strip().lower()
+
+    if not domain_a or not domain_b or domain_a == "unknown":
+        return 0.0, ""
+
+    if domain_a == domain_b:
+        return 0.85, f"Same domain: {domain_a}"
+
+    return 0.0, ""
+
+
 # ─────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────
@@ -186,6 +279,45 @@ def compute_relationships_for_memory(
                 rel_type=RelationshipType.SHARED_TAG,
                 score=tag_score,
                 explanation=tag_expl,
+            )
+            created.append(rel)
+
+        # 3. Phase D: Semantic similarity via pgvector embeddings
+        sem_score, sem_expl = _score_semantic(target_memory, other)
+        if sem_score >= 0.75:
+            rel = _upsert_relationship(
+                db,
+                source_id=memory_id,
+                target_id=other.id,
+                rel_type=RelationshipType.SEMANTIC,
+                score=sem_score,
+                explanation=sem_expl,
+            )
+            created.append(rel)
+
+        # 4. Phase D: Temporal proximity
+        temp_score, temp_expl = _score_temporal(target_memory, other)
+        if temp_score >= min_score:
+            rel = _upsert_relationship(
+                db,
+                source_id=memory_id,
+                target_id=other.id,
+                rel_type=RelationshipType.TEMPORAL,
+                score=temp_score,
+                explanation=temp_expl,
+            )
+            created.append(rel)
+
+        # 5. Phase D: Domain linking
+        dom_score, dom_expl = _score_domain(target_memory, other)
+        if dom_score >= min_score:
+            rel = _upsert_relationship(
+                db,
+                source_id=memory_id,
+                target_id=other.id,
+                rel_type=RelationshipType.DOMAIN,
+                score=dom_score,
+                explanation=dom_expl,
             )
             created.append(rel)
 

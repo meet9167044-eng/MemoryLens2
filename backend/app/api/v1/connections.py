@@ -1,10 +1,11 @@
 """
-GET /api/v1/connections — Phase D: Memory Graph Connections
+GET /api/v1/connections — Phase D: Memory Knowledge Graph
 
-Returns nodes and edges for the Connections screen graph visualizer.
+Returns nodes and edges for the Connections screen graph visualizer,
+plus stories (temporal session groups) and project clusters.
 
 Nodes: Memory nodes + Entity nodes.
-Edges: Relationship rows (shared_entity, shared_tag, semantic_similarity).
+Edges: Relationship rows (shared_entity, shared_tag, semantic, temporal, domain).
 
 If no real memories exist, returns a minimal demo graph derived from
 the synthetic dataset so the UI always has something to show.
@@ -22,6 +23,8 @@ from app.db.session import get_db
 from app.models.memory import Memory
 from app.models.entity import Entity
 from app.models.relationship import Relationship
+from app.services.story_builder import build_stories
+from app.services.project_detector import build_project_clusters
 
 router = APIRouter()
 
@@ -185,8 +188,34 @@ def get_connections(
                 edges.append(_entity_memory_edge(m, e, me_idx))
                 me_idx += 1
 
+    # Phase D: Build stories (temporal session groups)
+    stories_raw = build_stories(db, limit=limit)
+    stories = [
+        {
+            "id": s.id,
+            "title": s.title,
+            "memory_ids": s.memory_ids,
+            "start_time": s.start_time.isoformat() if s.start_time else None,
+            "end_time": s.end_time.isoformat() if s.end_time else None,
+            "tags": s.tags,
+            "memory_count": len(s.memory_ids),
+        }
+        for s in stories_raw
+    ]
+
+    # Phase D: Build project clusters
+    project_clusters_raw = build_project_clusters(db)
+    projects = [
+        {"name": name, "memory_ids": ids, "memory_count": len(ids)}
+        for name, ids in project_clusters_raw.items()
+        if len(ids) >= 2  # only show projects with at least 2 memories
+    ]
+
     return {
         "nodes": nodes,
         "edges": edges,
         "total_memories": count,
+        "stories": stories,
+        "projects": projects,
     }
+

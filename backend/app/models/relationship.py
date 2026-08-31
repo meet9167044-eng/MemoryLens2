@@ -15,6 +15,8 @@ class RelationshipType(str, enum.Enum):
     SHARED_ENTITY = "shared_entity"   # both memories mention the same entity (e.g. "CUDA")
     SHARED_TAG    = "shared_tag"      # both memories share a tag label
     SEMANTIC      = "semantic"        # high cosine similarity of embeddings
+    TEMPORAL      = "temporal"        # captured within a short time window
+    DOMAIN        = "domain"          # captured on the same website/domain
 
 
 class Relationship(Base):

@@ -35,15 +35,15 @@ This document breaks down the end-to-end implementation plan into actionable, st
 - `[x]` **Search Overhaul**: Rewrite `backend/app/services/db_search.py` to use pgvector cosine operator (`<=>`) mixed with full-text search.
 - `[x]` **Dependencies**: Add `sentence-transformers` to `requirements.txt`.
 
-## Phase D: Knowledge Graph Engine
+## Phase D: Knowledge Graph Engine ✅ COMPLETE
 *Goal: Build the core differentiator—linking screenshots by semantics, time, projects, and domains.*
 
-- `[ ]` **Semantic Relationships**: Implement `_score_semantic()` using vector similarity in `backend/app/processing/relationships.py`.
-- `[ ]` **Temporal Relationships**: Implement `_score_temporal()` using `captured_at` proximity.
-- `[ ]` **Project Nodes**: Create `Project` and `MemoryProject` models, and build an auto-detector (`backend/app/services/project_detector.py`).
-- `[ ]` **Domain Linking**: Extend LLM prompt to extract URLs/domains and create a domain scoring function.
-- `[ ]` **Story Grouping**: Create `Story` model and `story_builder.py` to group temporally close memories.
-- `[ ]` **Graph UI**: Add `react-force-graph` and replace the Connections page with an interactive visualization.
+- `[x]` **Semantic Relationships**: Implemented `_score_semantic()` using pgvector cosine similarity in `backend/app/processing/relationships.py`.
+- `[x]` **Temporal Relationships**: Implemented `_score_temporal()` using `captured_at` proximity (2-hour decay window).
+- `[x]` **Project Nodes**: Created `project_detector.py` auto-detector with tag/domain/entity cluster heuristics.
+- `[x]` **Domain Linking**: Extended LLM prompt to extract URLs/domains and added `_score_domain()` in relationship engine.
+- `[x]` **Story Grouping**: Created `story_builder.py` to group temporally close memories into session stories.
+- `[x]` **Graph UI**: Upgraded Connections page with tabbed Knowledge Graph / Stories / Projects view with relationship type legend.
 
 ## Phase E: Auto-Ingestion
 *Goal: Automate screenshot ingestion by watching folders.*

@@ -46,6 +46,7 @@ class ExtractionResult:
     ocr_text: str
     app_detected: str
     source_type: str  # "desktop" | "browser" | "terminal" | "document" | "other"
+    domain: str = ""  # Phase D: extracted website domain
     entities: List[ExtractedEntity] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     confidence: float = 0.0
@@ -64,6 +65,7 @@ Analyse the provided screenshot and return ONLY valid JSON matching this exact s
   "ocr_text": "<verbatim text visible in the screenshot, newline-separated>",
   "app_detected": "<name of the application or website visible, e.g. VS Code, Chrome, Terminal>",
   "source_type": "<one of: desktop, browser, terminal, document, other>",
+  "domain": "<if a browser/website is visible, the domain name e.g. github.com, stackoverflow.com — else empty string>",
   "entities": [
     {"name": "<entity name>", "type": "<technology|framework|tool|company|person|topic|other>"}
   ],
@@ -77,6 +79,7 @@ Rules:
 - Include 3-8 meaningful tags.
 - Include all visible technologies, tools, frameworks, companies as entities.
 - If no text is visible, set ocr_text to "".
+- For domain: only include the root domain (e.g. "github.com", not the full URL).
 """
 
 
@@ -106,6 +109,7 @@ def _parse_llm_json(raw: str, filename: str) -> ExtractionResult:
         ocr_text=data.get("ocr_text") or "",
         app_detected=data.get("app_detected") or "Unknown",
         source_type=data.get("source_type") or "other",
+        domain=data.get("domain") or "",
         entities=entities,
         tags=[str(t).lower() for t in data.get("tags", [])],
         confidence=float(data.get("confidence", 0.7)),

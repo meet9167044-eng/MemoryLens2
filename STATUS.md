@@ -26,7 +26,15 @@
 - [ ] Show `app_detected` in frontend
 
 ## Phase C — Real Vector Search ⬜ PENDING
-## Phase D — Knowledge Graph Engine ⬜ PENDING
+## Phase D — Knowledge Graph Engine ✅ DONE
+- [x] Semantic relationships: `_score_semantic()` using pgvector cosine similarity
+- [x] Temporal relationships: `_score_temporal()` with 2-hour decay window on `captured_at`
+- [x] Project auto-detector: `project_detector.py` (tags / domain / entity heuristics)
+- [x] Domain linking: LLM prompt extended, `_score_domain()` added, `domain` persisted in pipeline
+- [x] Story grouping: `story_builder.py` groups sessions by 30-min idle gap
+- [x] Graph UI: Connections page upgraded with Knowledge Graph / Stories / Projects tabs
+- [x] DB migration applied: `30e8c0b71561` (TEMPORAL + DOMAIN enum values)
+
 ## Phase E — Auto-Ingestion ⬜ PENDING
 ## Phase F — Scalability ⬜ PENDING
 ## Phase G — UX Polish ⬜ PENDING
