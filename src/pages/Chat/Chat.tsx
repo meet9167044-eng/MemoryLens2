@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react"
+﻿import React, { useState, useRef, useEffect } from "react"
 import { format } from "date-fns"
 import { api, ChatCitation } from "@/services/api"
 import { Send, Loader, Bot, User, ExternalLink, Zap, Brain } from "lucide-react"
@@ -39,7 +39,9 @@ export default function Chat() {
     setInput("")
     setLoading(true)
 
-    const res = await api.chat(query)
+    const ctx = localStorage.getItem('memorylens_context')
+    const contextIds = ctx ? JSON.parse(ctx) : undefined
+    const res = await api.chat(query, contextIds)
     setLoading(false)
 
     if (res) {

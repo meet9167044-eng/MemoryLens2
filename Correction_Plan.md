@@ -60,14 +60,14 @@ This document breaks down the end-to-end implementation plan into actionable, st
 - `[x]` **Optimize Relationships**: Rewrote candidate selection in `compute_relationships_for_memory` to pre-fetch via temporal bounds, exact domains, entity overlaps, tag matches, and pgvector nearest-neighbor, completely avoiding O(n²) comparisons.
 - `[x]` **Hash Column**: `file_hash` is present in `Screenshot` model and used for fast deduplication at ingest.
 
-## Phase G: UX Polish
+## Phase G: UX Polish ✅ COMPLETE
 *Goal: Final touches on search, chat, and timeline.*
 
-- `[ ]` **NL Query Parsing**: Extract intents (dates, entities) from user search queries.
-- `[ ]` **Related Screenshots**: Add a sidebar to `MemoryDetail.tsx` showing linked screenshots.
-- `[ ]` **Timeline UI**: Group memories by date and add a calendar heatmap.
-- `[ ]` **Contextual Chat**: Pass previous search results into the chat context.
-- `[ ]` **Search Facets**: Add clickable filter sidebars (App, Date, Tags, Entities).
+- `[x]` **NL Query Parsing**: Extract intents (dates, entities) from user search queries via `nl_parser.py`.
+- `[x]` **Related Screenshots**: Added a right-hand sidebar to `MemoryDetail.tsx` showing linked screenshots.
+- `[x]` **Timeline UI**: Added a 12-week GitHub-style calendar heatmap to `Timeline.tsx`.
+- `[x]` **Contextual Chat**: Passed previous search results into the chat context in `Chat.tsx` via local storage.
+- `[x]` **Search Facets**: Added clickable filter sidebars for Apps and Dates to `Search.tsx`.
 
 ## Phase H: Demo & Polish
 *Goal: Ensure the project is portfolio-ready.*

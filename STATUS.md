@@ -40,6 +40,11 @@
 - [x] Background Pipeline Queue (`PriorityQueue` with fixed worker pool)
 - [x] O(n²) Relationship Optimization (Candidate pre-fetching via exact/overlap filtering and pgvector)
 - [x] File hash deduplication at ingest
-## Phase G — UX Polish ⬜ PENDING
+## Phase G — UX Polish ✅ DONE
+- [x] NL Query Parsing using Gemini API
+- [x] Search Facets for Apps and Dates
+- [x] Related Screenshots right-sidebar layout
+- [x] Timeline 12-week Calendar Heatmap
+- [x] Contextual Chat (search results passed to chat)
 ## Phase H — Demo Preparation ⬜ PENDING
 ## Phase I — Extra Improvements ⬜ PENDING

@@ -37,6 +37,7 @@ router = APIRouter()
 class ChatMessage(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000, description="User's question")
     session_id: Optional[str] = Field(default=None, description="Optional session ID for conversation tracking")
+    context_memory_ids: Optional[List[str]] = Field(default=None, description="Explicit memory IDs (e.g. from search results) to ground the answer")
 
 
 class Citation(BaseModel):
@@ -84,11 +85,21 @@ def _embed_query(q: str) -> Optional[list]:
         return None
 
 
-def _retrieve_top_memories(db: Session, query_vec: Optional[list], q: str, k: int = 5) -> List[Memory]:
-    """Retrieve top-k most relevant memories using vector similarity + keyword fallback."""
+def _retrieve_top_memories(db: Session, query_vec: Optional[list], q: str, context_memory_ids: Optional[List[str]] = None, k: int = 5) -> List[Memory]:
+    """Retrieve top-k most relevant memories using vector similarity + keyword fallback, optionally pinning specific memories."""
+    # 1. If explicit context is provided, fetch those first
+    pinned = []
+    if context_memory_ids:
+        from sqlalchemy import cast, String
+        pinned = db.query(Memory).filter(Memory.id.cast(String).in_(context_memory_ids)).all()
+        # If we have enough pinned memories, we can just return them or supplement them
+        
+    # We still fetch others to supplement up to K
     memories = db.query(Memory).all()
     if not memories:
-        return []
+        return pinned
+        
+    pinned_ids = {str(m.id) for m in pinned}
 
     if query_vec:
         scored = []
@@ -108,7 +119,9 @@ def _retrieve_top_memories(db: Session, query_vec: Optional[list], q: str, k: in
                 score += 0.3
             scored.append((score, m))
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [m for _, m in scored[:k]]
+        # Exclude pinned to avoid duplicates, then combine
+        extra = [m for _, m in scored if str(m.id) not in pinned_ids]
+        return (pinned + extra)[:max(k, len(pinned))]
     else:
         # Keyword-only fallback
         q_lower = q.lower()
@@ -117,7 +130,10 @@ def _retrieve_top_memories(db: Session, query_vec: Optional[list], q: str, k: in
             doc = f"{m.title or ''} {m.summary or ''} {m.raw_ocr_text or ''}".lower()
             if q_lower in doc:
                 scored.append(m)
-        return scored[:k] if scored else memories[:k]
+        extra = [m for m in scored if str(m.id) not in pinned_ids]
+        if not extra:
+            extra = [m for m in memories if str(m.id) not in pinned_ids]
+        return (pinned + extra)[:max(k, len(pinned))]
 
 
 def _build_context(memories: List[Memory]) -> str:
@@ -281,7 +297,8 @@ def chat(
 
     # Full RAG flow
     query_vec = _embed_query(body.message)
-    top_memories = _retrieve_top_memories(db, query_vec, body.message, k=5)
+    # 3. Retrieve related memories (Semantic + Keyword + Pinned Context)
+    top_memories = _retrieve_top_memories(db, query_vec, body.message, context_memory_ids=body.context_memory_ids, k=5)
 
     if not top_memories:
         return ChatResponse(

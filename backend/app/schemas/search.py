@@ -114,3 +114,5 @@ class SearchResponse(BaseModel):
     limit: int
     offset: int
     results: List[SearchResult]
+    nlp_applied: bool = Field(default=False, description="Whether NLP parsing extracted filters")
+    facets: Optional[dict] = Field(default=None, description="Facet counts for the current search (apps, dates, tags)")

@@ -1,4 +1,4 @@
-// Absolute URL — backend CORS allows http://localhost:5173 so no proxy is needed.
+﻿// Absolute URL — backend CORS allows http://localhost:5173 so no proxy is needed.
 // If you move to production, swap this for an env variable.
 const API_BASE = "http://localhost:8000/api/v1"
 

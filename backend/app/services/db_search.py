@@ -156,7 +156,30 @@ class DBSearchService:
         self.db = db
 
     def search(self, request: SearchRequest) -> SearchResponse:
+        from app.services.nl_parser import parse_search_query
+        
         q = request.q.strip()
+        nlp_applied = False
+        
+        # Phase G: Try NLP parsing if no hard filters are provided
+        if q and not (request.date_from or request.date_to or request.source_type):
+            parsed = parse_search_query(q)
+            if parsed.get("date_from") or parsed.get("app") or parsed.get("tags"):
+                # Apply extracted filters
+                request.date_from = parsed.get("date_from") or request.date_from
+                request.date_to = parsed.get("date_to") or request.date_to
+                # Using source_type field loosely for app for now (or strictly match)
+                if parsed.get("app"):
+                    # We will filter on app_detected below
+                    pass
+                q = parsed.get("query", q).strip()
+                nlp_applied = True
+                self.parsed_nlp = parsed
+            else:
+                self.parsed_nlp = None
+        else:
+            self.parsed_nlp = None
+
         query_vec = _embed_query(q)  # None if no API key
 
         # Base query — join entities for searching
@@ -165,18 +188,31 @@ class DBSearchService:
         # Date filters
         if request.date_from:
             try:
-                from datetime import datetime
-                base = base.filter(Memory.created_at >= datetime.fromisoformat(request.date_from))
+                from datetime import datetime, timezone
+                dt_from = datetime.fromisoformat(request.date_from)
+                if dt_from.tzinfo is None: dt_from = dt_from.replace(tzinfo=timezone.utc)
+                base = base.filter(Memory.created_at >= dt_from)
             except ValueError:
                 pass
         if request.date_to:
             try:
-                from datetime import datetime
-                base = base.filter(Memory.created_at <= datetime.fromisoformat(request.date_to))
+                from datetime import datetime, timezone
+                dt_to = datetime.fromisoformat(request.date_to)
+                if dt_to.tzinfo is None: dt_to = dt_to.replace(tzinfo=timezone.utc)
+                # To include the whole day if it's just YYYY-MM-DD
+                from datetime import timedelta
+                dt_to = dt_to + timedelta(days=1)
+                base = base.filter(Memory.created_at < dt_to)
             except ValueError:
                 pass
         if request.source_type:
             base = base.filter(Memory.content_type == request.source_type)
+            
+        if getattr(self, "parsed_nlp", None):
+            if self.parsed_nlp.get("app"):
+                base = base.filter(Memory.app_detected.ilike(f"%{self.parsed_nlp['app']}%"))
+            # We could filter on tags here, but we will let semantic search handle tags 
+            # or we could do a strict tag filter: Memory.tags.cast(String).ilike('%"tag"%')
 
         if query_vec:
             distance_expr = Memory.embedding.cosine_distance(query_vec)
@@ -190,6 +226,18 @@ class DBSearchService:
 
         if not results_from_db:
             return SearchResponse(query=q, total=0, limit=request.limit, offset=request.offset, results=[])
+
+        # Compute Facets on the returned DB rows
+        facets = {"apps": {}, "dates": {}, "types": {}}
+        for row in results_from_db:
+            m = row[0]
+            app = m.app_detected or "Unknown"
+            facets["apps"][app] = facets["apps"].get(app, 0) + 1
+            typ = m.content_type or "other"
+            facets["types"][typ] = facets["types"].get(typ, 0) + 1
+            if m.created_at:
+                date_str = m.created_at.strftime("%Y-%m-%d")
+                facets["dates"][date_str] = facets["dates"].get(date_str, 0) + 1
 
         scored: List[Tuple[float, str, Memory]] = []
 
@@ -213,9 +261,11 @@ class DBSearchService:
         results = [_to_search_result(m, s, mt, q) for s, mt, m in page]
 
         return SearchResponse(
-            query=q,
+            query=request.q, # original query
             total=total,
             limit=request.limit,
             offset=request.offset,
             results=results,
+            nlp_applied=nlp_applied,
+            facets=facets
         )
