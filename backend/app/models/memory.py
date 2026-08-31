@@ -10,8 +10,15 @@ import os
 # Use standard JSON if running with SQLite in tests, otherwise JSONB for Postgres
 JSON_VARIANT = JSON if os.environ.get("TESTING", "") == "1" else JSONB
 
-# Embedding dimension — placeholder until pgvector migration (Phase C)
-EMBEDDING_DIM = 768
+# Try to import pgvector support (Phase C)
+try:
+    from pgvector.sqlalchemy import Vector as PgVector
+    _HAS_PGVECTOR = True
+except ImportError:
+    PgVector = None
+    _HAS_PGVECTOR = False
+
+EMBEDDING_DIM = 768   # all-mpnet-base-v2 local model dimension (matches Gemini)
 
 
 class Memory(Base):
@@ -22,14 +29,16 @@ class Memory(Base):
     title = Column(String(512), nullable=True)
     summary = Column(Text, nullable=True)
     raw_ocr_text = Column(Text, nullable=True)
-    content_type = Column(String(128), nullable=True)     # "browser" | "desktop" | "terminal" | "document" | "other"
-    app_detected = Column(String(256), nullable=True)     # Phase B: "VS Code", "Chrome", "Terminal", etc.
-    captured_at = Column(DateTime(timezone=True), nullable=True)   # Phase B: original screenshot time (EXIF / filename)
-    domain = Column(String(256), nullable=True)           # Phase D: "github.com", "stackoverflow.com"
+    content_type = Column(String(128), nullable=True)
+    app_detected = Column(String(256), nullable=True)
+    captured_at = Column(DateTime(timezone=True), nullable=True)
+    domain = Column(String(256), nullable=True)
     tags = Column(JSON_VARIANT, nullable=True, default=list)
     confidence_score = Column(Float, nullable=True)
-    # Phase C will replace this with a pgvector Vector(768) column
-    embedding_placeholder = Column(Text, nullable=True, comment="Placeholder — Phase C migrates this to vector(768)")
+    # Phase C: real pgvector column - stores 768-dim vectors
+    embedding = Column(PgVector(EMBEDDING_DIM), nullable=True) if _HAS_PGVECTOR else Column(Text, nullable=True)
+    # Legacy placeholder kept until all rows are migrated
+    embedding_placeholder = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
@@ -38,4 +47,3 @@ class Memory(Base):
 
     def __repr__(self):
         return f"<Memory id={self.id} title={self.title!r} app={self.app_detected!r}>"
-

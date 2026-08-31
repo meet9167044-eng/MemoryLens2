@@ -37,31 +37,27 @@ from app.schemas.search import (
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _cosine(a: list, b: list) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    mag_a = math.sqrt(sum(x * x for x in a))
-    mag_b = math.sqrt(sum(y * y for y in b))
-    if mag_a == 0 or mag_b == 0:
-        return 0.0
-    return dot / (mag_a * mag_b)
+
 
 
 def _embed_query(q: str) -> Optional[list]:
-    """Embed a query string using Gemini text-embedding-004."""
+    """Embed a query string using Gemini or local embedder."""
     try:
         from app.config import settings
-        if not settings.GEMINI_API_KEY:
-            return None
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        result = genai.embed_content(
-            model=f"models/{settings.EMBEDDING_MODEL}",
-            content=q,
-            task_type="RETRIEVAL_QUERY",
-        )
-        return result["embedding"]
+        if settings.GEMINI_API_KEY:
+            import google.generativeai as genai
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            result = genai.embed_content(
+                model=f"models/{settings.EMBEDDING_MODEL}",
+                content=q,
+                task_type="RETRIEVAL_QUERY",
+            )
+            return result["embedding"]
     except Exception:
-        return None
+        pass
+    
+    from app.core.local_embedder import embed_local
+    return embed_local(q)
 
 
 def _keyword_hit(q: str, memory: Memory) -> float:
@@ -182,25 +178,25 @@ class DBSearchService:
         if request.source_type:
             base = base.filter(Memory.content_type == request.source_type)
 
-        memories = base.order_by(Memory.created_at.desc()).all()
+        if query_vec:
+            distance_expr = Memory.embedding.cosine_distance(query_vec)
+            sem_score_expr = (1.0 - distance_expr).label("sem_score")
+            base = base.add_columns(sem_score_expr)
+        else:
+            from sqlalchemy import literal
+            base = base.add_columns(literal(0.0).label("sem_score"))
 
-        if not memories:
+        results_from_db = base.order_by(Memory.created_at.desc()).all()
+
+        if not results_from_db:
             return SearchResponse(query=q, total=0, limit=request.limit, offset=request.offset, results=[])
 
         scored: List[Tuple[float, str, Memory]] = []
 
-        for mem in memories:
+        for row in results_from_db:
+            mem = row[0]
+            sem = float(row[1]) if row[1] is not None else 0.0
             kw = _keyword_hit(q, mem)
-
-            # Semantic score from stored embedding
-            sem = 0.0
-            if query_vec and mem.embedding_placeholder:
-                try:
-                    stored_vec = json.loads(mem.embedding_placeholder)
-                    if isinstance(stored_vec, list) and stored_vec:
-                        sem = _cosine(query_vec, stored_vec)
-                except (json.JSONDecodeError, TypeError):
-                    pass
 
             # Hybrid score
             score = 0.6 * sem + 0.4 * kw

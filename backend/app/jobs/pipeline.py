@@ -1,18 +1,18 @@
 """
-Phase 10 — End-to-End Processing Pipeline
+Phase 10 â€” End-to-End Processing Pipeline
 ==========================================
 
 run_pipeline(screenshot_id) executes the full processing chain for a
 screenshot in the background, updating DB state at every stage.
 
 Pipeline stages (sequential):
-    PREPROCESSING → OCR → AI_EXTRACTION → EMBEDDING → RELATIONSHIPS
+    PREPROCESSING â†’ OCR â†’ AI_EXTRACTION â†’ EMBEDDING â†’ RELATIONSHIPS
 
 Design rules:
-- Each stage is wrapped in its own ProcessingJob row (QUEUED → RUNNING → COMPLETED/FAILED).
-- Screenshot.status mirrors the overall result (PROCESSING → COMPLETED or FAILED).
+- Each stage is wrapped in its own ProcessingJob row (QUEUED â†’ RUNNING â†’ COMPLETED/FAILED).
+- Screenshot.status mirrors the overall result (PROCESSING â†’ COMPLETED or FAILED).
 - Idempotent: re-running the same screenshot_id skips already-COMPLETED stages.
-- No Celery/Redis — uses Python threading (caller's responsibility).
+- No Celery/Redis â€” uses Python threading (caller's responsibility).
 - run_pipeline() manages its own DB session so it is safe to call from a daemon thread.
 """
 
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Embedding helper (Phase C) — calls Gemini text-embedding-004 when available
+# Embedding helper (Phase C) â€” calls Gemini text-embedding-004 when available
 # ---------------------------------------------------------------------------
 
 def _compute_embedding(text: str) -> Optional[list]:
@@ -123,7 +123,7 @@ def _run_stage(
     """
     # Skip already-completed stages (idempotency)
     if job.status == JobStatus.COMPLETED:
-        logger.info("Stage %s already COMPLETED — skipping.", job.stage)
+        logger.info("Stage %s already COMPLETED â€” skipping.", job.stage)
         return True
 
     job.status = JobStatus.RUNNING
@@ -164,7 +164,7 @@ def run_pipeline(
         screenshot_id: UUID of the Screenshot to process.
         db:            Optional SQLAlchemy session (inject for testing).
     """
-    # ── Session management ────────────────────────────────────────────────
+    # â”€â”€ Session management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     _owns_session = db is None
     if _owns_session:
         from app.db.session import SessionLocal
@@ -178,19 +178,19 @@ def run_pipeline(
 
 
 def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
-    """Inner implementation — assumes caller manages the session lifecycle."""
+    """Inner implementation â€” assumes caller manages the session lifecycle."""
 
-    # ── 0. Load screenshot ────────────────────────────────────────────────
+    # â”€â”€ 0. Load screenshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     screenshot: Optional[Screenshot] = db.get(Screenshot, screenshot_id)
     if not screenshot:
-        logger.error("Pipeline: Screenshot %s not found — aborting.", screenshot_id)
+        logger.error("Pipeline: Screenshot %s not found â€” aborting.", screenshot_id)
         return
 
     logger.info("Pipeline START for screenshot %s", screenshot_id)
     screenshot.status = ScreenshotStatus.PROCESSING
     db.commit()
 
-    # ── Pre-create all job rows so they are visible immediately ───────────
+    # â”€â”€ Pre-create all job rows so they are visible immediately â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     jobs: dict[JobStage, ProcessingJob] = {}
     for stage in (
         JobStage.PREPROCESSING,
@@ -205,15 +205,15 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
     # Shared state passed between stages via a mutable dict
     ctx: dict = {}
 
-    # ── Stage 1: PREPROCESSING ───────────────────────────────────────────
+    # â”€â”€ Stage 1: PREPROCESSING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _preprocess():
         """
         Verify the file exists and extract the original capture timestamp.
 
         Priority order for captured_at:
-          1. EXIF DateTimeOriginal (most reliable — set by the OS/app)
+          1. EXIF DateTimeOriginal (most reliable â€” set by the OS/app)
           2. Filename date pattern  (e.g. Screenshot_2024-01-15_14-30.png)
-          3. File mtime             (last resort — may be upload time)
+          3. File mtime             (last resort â€” may be upload time)
         """
         import os, re
         image_path = screenshot.file_path or ""
@@ -293,7 +293,7 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         _fail_screenshot(db, screenshot)
         return
 
-    # ── Stage 2: OCR ─────────────────────────────────────────────────────
+    # â”€â”€ Stage 2: OCR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _ocr():
         """Run OCR on the preprocessed image and store text in a Memory row."""
         image_path = ctx.get("image_path", "")
@@ -330,7 +330,7 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         _fail_screenshot(db, screenshot)
         return
 
-    # ── Stage 3: AI_EXTRACTION — Multimodal LLM ─────────────────────────
+    # â”€â”€ Stage 3: AI_EXTRACTION â€” Multimodal LLM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _ai_extraction():
         """
         Phase B: Call LLMExtractor (Gemini / OpenAI / stub) on the image.
@@ -358,7 +358,7 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
                 filename=screenshot.original_filename or "upload.png",
             )
         else:
-            # No image bytes — fall back to OCR text we already have
+            # No image bytes â€” fall back to OCR text we already have
             from app.services.llm_extractor import _stub_result
             result = _stub_result(screenshot.original_filename or "upload.png")
 
@@ -379,7 +379,7 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
             memory.app_detected = result.app_detected
             logger.info("app_detected=%r for memory %s", result.app_detected, memory.id)
 
-        # Phase B: sync captured_at from Screenshot → Memory if EXIF was found
+        # Phase B: sync captured_at from Screenshot â†’ Memory if EXIF was found
         if screenshot.captured_at and not memory.captured_at:
             memory.captured_at = screenshot.captured_at
 
@@ -406,14 +406,13 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         _fail_screenshot(db, screenshot)
         return
 
-    # ── Stage 4: EMBEDDING — Real Gemini text-embedding ─────────────────
+    # â”€â”€ Stage 4: EMBEDDING â€” Real Gemini text-embedding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _embedding():
         """
         Phase C: Compute a real vector embedding for the memory using
-        Gemini text-embedding-004 (768-dim) or fallback zero-vector.
-        Stored as JSON text in embedding_placeholder until pgvector migration.
+        Gemini text-embedding-004 (768-dim) or fallback to local embedder.
+        Stores directly in the pgvector column.
         """
-        import json as _json
         memory: Optional[Memory] = ctx.get("memory")
         if not memory:
             return
@@ -432,11 +431,13 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
             embed_text = f"{memory.title or ''} {memory.raw_ocr_text or ''}"
 
         vector = _compute_embedding(embed_text)
+        if not vector:
+            from app.core.local_embedder import embed_local
+            vector = embed_local(embed_text)
+
         if vector:
-            # Store as JSON array string — pgvector migration will move this to vector column
-            memory.embedding_placeholder = _json.dumps(vector)
-        else:
-            memory.embedding_placeholder = ""
+            # Store directly in the vector column
+            memory.embedding = vector
         db.flush()
 
     ok = _run_stage(db, jobs[JobStage.EMBEDDING], _embedding)
@@ -444,7 +445,7 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         _fail_screenshot(db, screenshot)
         return
 
-    # ── Stage 5: INDEXING (Relationships) ────────────────────────────────
+    # â”€â”€ Stage 5: INDEXING (Relationships) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _relationships():
         """Compute and persist relationships between this memory and others."""
         memory: Optional[Memory] = ctx.get("memory")
@@ -456,7 +457,7 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         _fail_screenshot(db, screenshot)
         return
 
-    # ── Done ──────────────────────────────────────────────────────────────
+    # â”€â”€ Done â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     screenshot.status = ScreenshotStatus.COMPLETED
     db.commit()
     logger.info("Pipeline COMPLETED for screenshot %s", screenshot_id)
@@ -467,3 +468,4 @@ def _fail_screenshot(db: Session, screenshot: Screenshot) -> None:
     screenshot.status = ScreenshotStatus.FAILED
     db.commit()
     logger.error("Pipeline FAILED for screenshot %s", screenshot.id)
+

@@ -25,15 +25,15 @@ This document breaks down the end-to-end implementation plan into actionable, st
 - `[x]` **Memories API**: `memories.py` uses real `app_detected`, correct timestamp, and sorts by `captured_at` desc.
 - `[x]` **Frontend types**: `InsightStats` interface updated to include all new API fields.
 
-## Phase C: Real Vector Search
+## Phase C: Real Vector Search ✅ COMPLETE
 *Goal: Replace O(n) Python search with fast `pgvector` lookups.*
 
-- `[ ]` **Database Schema Update**: Add `embedding` column of type `Vector(768)` to `Memory`.
-- `[ ]` **Alembic Migration**: Generate migration to enable `pgvector` extension, add column, and create an HNSW index.
-- `[ ]` **Pipeline Update**: Update `_embedding()` in `pipeline.py` to store vectors in the new pgvector column.
-- `[ ]` **Local Embedder**: Implement SentenceTransformers in `backend/app/core/local_embedder.py` for offline embeddings.
-- `[ ]` **Search Overhaul**: Rewrite `backend/app/services/db_search.py` to use pgvector cosine operator (`<=>`) mixed with full-text search.
-- `[ ]` **Dependencies**: Add `sentence-transformers` to `requirements.txt`.
+- `[x]` **Database Schema Update**: Add `embedding` column of type `Vector(768)` to `Memory`.
+- `[x]` **Alembic Migration**: Generate migration to enable `pgvector` extension, add column, and create an HNSW index.
+- `[x]` **Pipeline Update**: Update `_embedding()` in `pipeline.py` to store vectors in the new pgvector column.
+- `[x]` **Local Embedder**: Implement SentenceTransformers in `backend/app/core/local_embedder.py` for offline embeddings.
+- `[x]` **Search Overhaul**: Rewrite `backend/app/services/db_search.py` to use pgvector cosine operator (`<=>`) mixed with full-text search.
+- `[x]` **Dependencies**: Add `sentence-transformers` to `requirements.txt`.
 
 ## Phase D: Knowledge Graph Engine
 *Goal: Build the core differentiator—linking screenshots by semantics, time, projects, and domains.*
