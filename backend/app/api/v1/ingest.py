@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.session import get_db
 from app.jobs.pipeline import run_pipeline
+from app.jobs.queue import pipeline_queue
 from app.models.screenshot import Screenshot, ScreenshotStatus
 from app.schemas.ingest import ErrorResponse, ScreenshotUploadResponse, ScreenshotStatusResponse
 from app.services.storage import storage
@@ -35,7 +36,7 @@ _log = _logging.getLogger(__name__)
 
 
 def _run_pipeline_safe(screenshot_id) -> None:
-    """Thread target: run the full pipeline; swallow and log any uncaught error."""
+    """Fallback thread target (used if queue is full)."""
     try:
         run_pipeline(screenshot_id=screenshot_id)
     except Exception as exc:  # pragma: no cover
@@ -150,14 +151,18 @@ async def ingest_screenshot(
     db.commit()
     db.refresh(screenshot)
 
-    # ── 7. Fire background pipeline (Phase 10) ───────────────────────────
-    _screenshot_id = screenshot.id  # capture before thread starts
-    threading.Thread(
-        target=_run_pipeline_safe,
-        args=(_screenshot_id,),
-        daemon=True,
-        name=f"pipeline-{_screenshot_id}",
-    ).start()
+    # ── 7. Submit to pipeline queue (Phase F) ───────────────────────────
+    _screenshot_id = screenshot.id
+    accepted = pipeline_queue.enqueue(_screenshot_id)
+    if not accepted:
+        # Queue full — fall back to raw thread
+        _log.warning("Queue full, falling back to raw thread for screenshot %s", _screenshot_id)
+        threading.Thread(
+            target=_run_pipeline_safe,
+            args=(_screenshot_id,),
+            daemon=True,
+            name=f"pipeline-fallback-{_screenshot_id}",
+        ).start()
 
     return ScreenshotUploadResponse(
         screenshot_id=screenshot.id,
@@ -284,12 +289,13 @@ async def bulk_ingest_screenshots(
             db.refresh(screenshot)
 
             sid = screenshot.id
-            threading.Thread(
-                target=_run_pipeline_safe,
-                args=(sid,),
-                daemon=True,
-                name=f"bulk-pipeline-{sid}",
-            ).start()
+            if not pipeline_queue.enqueue(sid, priority=7):  # bulk = lower priority
+                threading.Thread(
+                    target=_run_pipeline_safe,
+                    args=(sid,),
+                    daemon=True,
+                    name=f"bulk-fallback-{sid}",
+                ).start()
 
             accepted.append({"filename": filename, "screenshot_id": str(sid)})
 

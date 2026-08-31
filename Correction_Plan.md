@@ -53,12 +53,12 @@ This document breaks down the end-to-end implementation plan into actionable, st
 - `[x]` **Watch Controller API**: Added `/api/v1/watch`, `/watch/start`, `/watch/stop` in `backend/app/api/v1/watch.py`.
 - `[x]` **Settings UI**: Built full Settings page with Auto-capture toggle, folder path input, start/stop controls, and bulk import panel.
 
-## Phase F: Scalability
+## Phase F: Scalability ✅ COMPLETE
 *Goal: Handle 10,000+ screenshots smoothly.*
 
-- `[ ]` **Pipeline Queue**: Replace raw threads with a proper in-process `asyncio.Queue` in `backend/app/jobs/queue.py`.
-- `[ ]` **Optimize Relationships**: Rewrite relationship candidate selection to avoid O(n²) comparisons (use entity overlap / pgvector top-K).
-- `[ ]` **Hash Column**: Add `file_hash` explicitly to the `Screenshot` model and use it for fast deduplication at ingest.
+- `[x]` **Pipeline Queue**: Replaced raw threads with a proper in-process `PriorityQueue` in `backend/app/jobs/queue.py` and hooked it to FastAPI lifespan.
+- `[x]` **Optimize Relationships**: Rewrote candidate selection in `compute_relationships_for_memory` to pre-fetch via temporal bounds, exact domains, entity overlaps, tag matches, and pgvector nearest-neighbor, completely avoiding O(n²) comparisons.
+- `[x]` **Hash Column**: `file_hash` is present in `Screenshot` model and used for fast deduplication at ingest.
 
 ## Phase G: UX Polish
 *Goal: Final touches on search, chat, and timeline.*

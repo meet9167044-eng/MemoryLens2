@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase E -- Folder Watcher
 ==========================
 Daemon service that monitors a directory for new screenshot files and
@@ -147,6 +147,7 @@ class FolderWatcher:
         from app.db.session import SessionLocal
         from app.models.screenshot import Screenshot, ScreenshotStatus
         from app.services.storage import storage
+        from app.jobs.queue import pipeline_queue
         from app.jobs.pipeline import run_pipeline
 
         db = SessionLocal()
@@ -181,13 +182,15 @@ class FolderWatcher:
         finally:
             db.close()
 
-        # Fire pipeline in background thread
-        _threading.Thread(
-            target=run_pipeline,
-            args=(screenshot_id,),
-            daemon=True,
-            name=f"fw-pipeline-{screenshot_id}",
-        ).start()
+        # Fire pipeline in background queue
+        if not pipeline_queue.enqueue(screenshot_id, priority=5):
+            logger.warning("FolderWatcher: queue full, falling back to raw thread for %s", screenshot_id)
+            _threading.Thread(
+                target=run_pipeline,
+                args=(screenshot_id,),
+                daemon=True,
+                name=f"fw-pipeline-{screenshot_id}",
+            ).start()
         logger.info("FolderWatcher: ingested %s -> screenshot_id=%s", path.name, screenshot_id)
 
 

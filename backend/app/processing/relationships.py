@@ -242,10 +242,89 @@ def compute_relationships_for_memory(
         db.query(Entity).filter(Entity.memory_id == memory_id).all()
     )
 
-    # Load all OTHER memories
+    # Phase F: Optimize candidate selection to avoid O(n²) comparisons
+    candidate_ids = set()
+
+    # 1. Temporal candidates (within +/- 2 hours)
+    if target_memory.captured_at:
+        from datetime import timedelta, timezone
+        temp_start = target_memory.captured_at - timedelta(hours=2)
+        temp_end = target_memory.captured_at + timedelta(hours=2)
+        if temp_start.tzinfo is None:
+            temp_start = temp_start.replace(tzinfo=timezone.utc)
+            temp_end = temp_end.replace(tzinfo=timezone.utc)
+        temporal_candidates = (
+            db.query(Memory.id)
+            .filter(Memory.id != memory_id)
+            .filter(Memory.captured_at.between(temp_start, temp_end))
+            .all()
+        )
+        for row in temporal_candidates:
+            candidate_ids.add(row[0])
+
+    # 2. Domain candidates
+    domain = (target_memory.domain or "").strip().lower()
+    if domain and domain != "unknown":
+        domain_candidates = (
+            db.query(Memory.id)
+            .filter(Memory.id != memory_id)
+            .filter(Memory.domain == domain)
+            .all()
+        )
+        for row in domain_candidates:
+            candidate_ids.add(row[0])
+
+    # 3. Entity overlap candidates
+    if target_entities:
+        target_entity_names = [e.name for e in target_entities]
+        entity_candidates = (
+            db.query(Entity.memory_id)
+            .filter(Entity.memory_id != memory_id)
+            .filter(Entity.name.in_(target_entity_names))
+            .distinct()
+            .all()
+        )
+        for row in entity_candidates:
+            candidate_ids.add(row[0])
+
+    # 4. Tag overlap candidates
+    if target_memory.tags:
+        from sqlalchemy import or_, cast, String
+        tag_filters = [Memory.tags.cast(String).ilike(f'%"{t}"%') for t in target_memory.tags]
+        tag_candidates = (
+            db.query(Memory.id)
+            .filter(Memory.id != memory_id)
+            .filter(or_(*tag_filters))
+            .all()
+        )
+        for row in tag_candidates:
+            candidate_ids.add(row[0])
+
+    # 5. Semantic similarity candidates (pgvector top-K)
+    if target_memory.embedding is not None:
+        try:
+            semantic_candidates = (
+                db.query(Memory.id)
+                .filter(Memory.id != memory_id)
+                .filter(Memory.embedding != None)
+                .order_by(Memory.embedding.cosine_distance(target_memory.embedding))
+                .limit(50)
+                .all()
+            )
+            for row in semantic_candidates:
+                candidate_ids.add(row[0])
+        except Exception as exc:
+            logger.debug("Could not fetch semantic candidates via pgvector: %s", exc)
+
+    if not candidate_ids:
+        logger.info("compute_relationships_for_memory: No candidates found for %s", memory_id)
+        return []
+
+    # Load only the candidates
     other_memories: list[Memory] = (
-        db.query(Memory).filter(Memory.id != memory_id).all()
+        db.query(Memory).filter(Memory.id.in_(candidate_ids)).all()
     )
+    logger.info("compute_relationships_for_memory: Evaluated %d candidates for %s", len(other_memories), memory_id)
 
     created: list[Relationship] = []
 

@@ -36,7 +36,10 @@
 - [x] DB migration applied: `30e8c0b71561` (TEMPORAL + DOMAIN enum values)
 
 ## Phase E — Auto-Ingestion ⬜ PENDING
-## Phase F — Scalability ⬜ PENDING
+## Phase F — Scalability ✅ DONE
+- [x] Background Pipeline Queue (`PriorityQueue` with fixed worker pool)
+- [x] O(n²) Relationship Optimization (Candidate pre-fetching via exact/overlap filtering and pgvector)
+- [x] File hash deduplication at ingest
 ## Phase G — UX Polish ⬜ PENDING
 ## Phase H — Demo Preparation ⬜ PENDING
 ## Phase I — Extra Improvements ⬜ PENDING

@@ -21,6 +21,7 @@ Routers registered:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.api.v1 import health, search, memories, timeline, insights
@@ -28,14 +29,24 @@ from app.api.v1.ingest import router as ingest_router
 from app.api.v1.connections import router as connections_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.watch import router as watch_router
+from app.jobs.queue import pipeline_queue
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start pipeline worker pool on startup, shut down gracefully."""
+    pipeline_queue.start()
+    yield
+    pipeline_queue.stop(timeout=10.0)
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="1.0.0",
-    description="MemoryLens backend API — multimodal AI memory search.",
+    description="MemoryLens backend API -- multimodal AI memory search.",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url=f"{settings.API_V1_STR}/docs",
     redoc_url=f"{settings.API_V1_STR}/redoc",
+    lifespan=lifespan,
 )
 
 # ---------------------------------------------------------------------------
@@ -75,3 +86,9 @@ app.include_router(connections_router, prefix=settings.API_V1_STR, tags=["connec
 app.include_router(chat_router, prefix=settings.API_V1_STR, tags=["chat"])
 app.include_router(insights.router, prefix=settings.API_V1_STR, tags=["insights"])
 app.include_router(watch_router, tags=["watch"])               # watch router has its own /api/v1 prefix
+
+
+@app.get(f"{settings.API_V1_STR}/queue/stats", tags=["queue"], summary="Pipeline queue stats")
+def get_queue_stats():
+    """Returns the current pipeline worker queue statistics (Phase F)."""
+    return pipeline_queue.stats
