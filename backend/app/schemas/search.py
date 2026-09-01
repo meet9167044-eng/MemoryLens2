@@ -56,6 +56,9 @@ class SearchRequest(BaseModel):
     source_type: Optional[Literal[
         "desktop", "browser", "terminal", "document", "other"
     ]] = Field(default=None, description="Filter by source type")
+    app: Optional[str] = Field(default=None, description="Filter by application name")
+    project: Optional[str] = Field(default=None, description="Filter by project name")
+    story: Optional[str] = Field(default=None, description="Filter by story title")
     date_from: Optional[str] = Field(
         default=None,
         description="ISO 8601 lower bound for timestamp (e.g. 2026-01-01)"

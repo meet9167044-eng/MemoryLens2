@@ -102,6 +102,19 @@ Groq is free and provides fast vision+chat inference:
 
 ---
 
+## Offline / Local Architecture
+
+MemoryLens supports a fully offline, air-gapped configuration without needing Groq, Gemini, or OpenAI API keys.
+
+To run completely locally:
+1. Set `EMBEDDING_PROVIDER=local` in your `.env`. This forces the pipeline to use local `sentence-transformers` for vector generation.
+2. Ensure you have installed the optional OCR packages: `pip install paddleocr paddlepaddle` (if these are not installed, the pipeline will just gracefully skip OCR).
+   > [!WARNING]
+   > Windows Users: The default PaddlePaddle binaries might conflict with `oneDNN`. The app gracefully catches this and logs a warning, falling back to LLM-vision OCR. But if you want PaddleOCR locally, you must follow official Paddle docs for Windows CPU installs.
+3. Keep `LLM_PROVIDER` unset or set it to `stub` if you have no local LLM setup. (If you want local extraction, you can hook the pipeline to a local Ollama server).
+
+---
+
 ## Common Errors
 
 ### `ModuleNotFoundError: No module named 'app'`

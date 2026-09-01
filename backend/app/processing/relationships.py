@@ -155,7 +155,7 @@ def _score_semantic(
             return 0.0, ""
         score = dot / (mag_a * mag_b)
         score = round(max(0.0, min(1.0, score)), 4)
-        if score >= 0.75:
+        if score >= 0.65:
             return score, f"Semantic similarity: {score:.2%}"
     except Exception as exc:
         logger.debug("Semantic scoring error: %s", exc)
@@ -363,7 +363,7 @@ def compute_relationships_for_memory(
 
         # 3. Phase D: Semantic similarity via pgvector embeddings
         sem_score, sem_expl = _score_semantic(target_memory, other)
-        if sem_score >= 0.75:
+        if sem_score >= 0.65:
             rel = _upsert_relationship(
                 db,
                 source_id=memory_id,

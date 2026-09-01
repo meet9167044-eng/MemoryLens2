@@ -44,6 +44,8 @@ class Memory(Base):
 
     screenshot = relationship("Screenshot", back_populates="memories")
     entities = relationship("Entity", back_populates="memory", cascade="all, delete-orphan")
+    projects = relationship("Project", secondary="memory_projects", back_populates="memories")
+    stories = relationship("Story", secondary="memory_stories", back_populates="memories")
 
     def __repr__(self):
         return f"<Memory id={self.id} title={self.title!r} app={self.app_detected!r}>"

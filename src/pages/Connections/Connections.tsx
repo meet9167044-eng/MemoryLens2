@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { api, GraphNode, GraphEdge } from "@/services/api"
-import { Network, Link2, Monitor, Code, Tag, Cpu, BookOpen, FolderKanban, Clock, Globe } from "lucide-react"
+import { Network, BookOpen, FolderKanban, Clock, Maximize } from "lucide-react"
 import { EmptyLibrary } from "@/components/ui/EmptyLibrary"
+import ForceGraph2D from 'react-force-graph-2d'
 
 type Story = {
   id: string
@@ -27,44 +28,6 @@ type ConnectionsData = {
   projects?: Project[]
 }
 
-function EntityIcon({ label }: { label: string }) {
-  const lower = (label || '').toLowerCase()
-  if (lower.includes('code') || lower.includes('python') || lower.includes('javascript'))
-    return <Code size={20} />
-  if (lower.includes('gpu') || lower.includes('cuda') || lower.includes('cpu') || lower.includes('ml'))
-    return <Cpu size={20} />
-  if (lower.includes('tag') || lower.includes('topic'))
-    return <Tag size={20} />
-  if (lower.includes('.com') || lower.includes('github') || lower.includes('web'))
-    return <Globe size={20} />
-  return <Network size={20} />
-}
-
-function RelTypeBadge({ type }: { type: string }) {
-  const colours: Record<string, string> = {
-    shared_entity: '#3B82F6',
-    shared_tag:    '#10B981',
-    semantic:      '#8B5CF6',
-    temporal:      '#F59E0B',
-    domain:        '#EC4899',
-    has_entity:    '#6B7280',
-  }
-  const colour = colours[type] || '#6B7280'
-  return (
-    <span style={{
-      fontSize: '0.68rem',
-      fontWeight: 600,
-      padding: '2px 8px',
-      borderRadius: '999px',
-      background: colour + '20',
-      color: colour,
-      whiteSpace: 'nowrap',
-    }}>
-      {type.replace('_', ' ')}
-    </span>
-  )
-}
-
 function formatTime(iso: string | null) {
   if (!iso) return ''
   try {
@@ -76,6 +39,11 @@ export default function Connections() {
   const [connections, setConnections] = useState<ConnectionsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'graph' | 'stories' | 'projects'>('graph')
+  const fgRef = useRef<any>(null)
+  
+  // Container ref for responsive sizing
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
 
   useEffect(() => {
     async function fetchData() {
@@ -86,6 +54,19 @@ export default function Connections() {
     }
     fetchData()
   }, [])
+  
+  // Resize observer
+  useEffect(() => {
+    if (!containerRef.current) return
+    const observer = new ResizeObserver(entries => {
+      if (entries.length > 0) {
+        const { width, height } = entries[0].contentRect
+        setDimensions({ width, height })
+      }
+    })
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
+  }, [activeTab, loading])
 
   const tabs = [
     { id: 'graph' as const, label: 'Knowledge Graph', icon: Network },
@@ -93,8 +74,31 @@ export default function Connections() {
     { id: 'projects' as const, label: 'Projects', icon: FolderKanban },
   ]
 
+  // Graph rendering
+  const getNodeColor = useCallback((node: any) => {
+    switch (node.type) {
+      case 'memory': return '#4F46E5' // Indigo
+      case 'entity': return '#10B981' // Emerald
+      case 'project': return '#F43F5E' // Rose
+      case 'story': return '#EAB308' // Yellow
+      case 'domain': return '#06B6D4' // Cyan
+      default: return '#6B7280'
+    }
+  }, [])
+  
+  const getNodeVal = useCallback((node: any) => {
+    switch (node.type) {
+      case 'memory': return 5
+      case 'entity': return 3
+      case 'project': return 8
+      case 'story': return 6
+      case 'domain': return 4
+      default: return 3
+    }
+  }, [])
+
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="page-header">
         <div>
           <h1 className="page-title letterpress">Memory Connections</h1>
@@ -112,7 +116,7 @@ export default function Connections() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
         {tabs.map(tab => {
           const Icon = tab.icon
           const isActive = activeTab === tab.id
@@ -143,94 +147,73 @@ export default function Connections() {
       </div>
 
       {loading ? (
-        <div className="card" style={{ minHeight: '400px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+        <div className="card" style={{ flex: 1, minHeight: '400px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
           <div style={{ width: '52px', height: '52px', border: '4px solid #DBEAFE', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
           <p style={{ color: 'var(--secondary-text)' }}>Building knowledge graph...</p>
         </div>
       ) : (
 
-        <>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           {/* ── GRAPH TAB ── */}
           {activeTab === 'graph' && (
-            <div className="card" style={{ minHeight: '520px', display: 'flex', flexDirection: 'column' }}>
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
               {connections && connections.nodes?.length > 0 ? (
                 <>
-                  <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                    {[
-                      { label: 'memories', count: connections.nodes.filter(n => n.type === 'memory').length },
-                      { label: 'entities', count: connections.nodes.filter(n => n.type === 'entity').length },
-                      { label: 'relationships', count: connections.edges.filter(e => e.data?.relType !== 'has_entity').length },
-                    ].map(({ label, count }) => (
-                      <div key={label} style={{ fontSize: '0.8rem', color: 'var(--secondary-text)' }}>
-                        <span style={{ fontWeight: 700, color: 'var(--primary-text)', fontSize: '1.1rem' }}>{count}</span> {label}
-                      </div>
-                    ))}
+                  <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'center', background: 'var(--bg)' }}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--secondary-text)', fontWeight: 600 }}>Nodes:</span>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.75rem' }}><span style={{width: 10, height: 10, borderRadius: '50%', background: '#4F46E5'}}></span> Memory</div>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.75rem' }}><span style={{width: 10, height: 10, borderRadius: '50%', background: '#10B981'}}></span> Entity</div>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.75rem' }}><span style={{width: 10, height: 10, borderRadius: '50%', background: '#F43F5E'}}></span> Project</div>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.75rem' }}><span style={{width: 10, height: 10, borderRadius: '50%', background: '#EAB308'}}></span> Story</div>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.75rem' }}><span style={{width: 10, height: 10, borderRadius: '50%', background: '#06B6D4'}}></span> Domain</div>
+                    </div>
+                    <div style={{ flex: 1 }} />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => fgRef.current?.zoomToFit(400, 50)} className="btn btn-outline" style={{ padding: '6px', minWidth: 0 }} title="Zoom to fit"><Maximize size={16} /></button>
+                    </div>
                   </div>
 
-                  {/* Relationship type legend */}
-                  <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--secondary-text)', fontWeight: 600 }}>Relationship types:</span>
-                    {['shared_entity', 'shared_tag', 'semantic', 'temporal', 'domain'].map(t => (
-                      <RelTypeBadge key={t} type={t} />
-                    ))}
-                  </div>
-
-                  <div className="connections-grid" style={{ padding: '20px' }}>
-                    {connections.nodes
-                      .filter(n => n.type === 'entity')
-                      .map(node => {
-                        const connectedEdges = connections.edges.filter(
-                          e => e.source === node.id || e.target === node.id
-                        )
-                        const memoryCount = connectedEdges.length
-                        if (memoryCount === 0) return null
-
-                        return (
-                          <div key={node.id} className="connection-node">
-                            <div className="connection-icon">
-                              <EntityIcon label={node.label} />
-                            </div>
-                            <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: '1rem', color: 'var(--primary-text)', marginBottom: '6px' }}>
-                              {node.label}
-                            </div>
-                            <span className="badge badge-outline">
-                              {memoryCount} {memoryCount === 1 ? 'memory' : 'memories'}
-                            </span>
-                            <div style={{ width: '100%', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {connectedEdges.slice(0, 3).map((edge, i) => {
-                                const targetId = edge.source === node.id ? edge.target : edge.source
-                                const targetNode = connections.nodes.find(n => n.id === targetId)
-                                if (!targetNode || targetNode.type === 'entity') return null
-                                return (
-                                  <div key={i} style={{ background: 'var(--bg)', borderRadius: '8px', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem' }}>
-                                    <Monitor size={12} color="#9CA3AF" style={{ flexShrink: 0 }} />
-                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500, flex: 1 }}>
-                                      {targetNode.label || 'Memory'}
-                                    </span>
-                                    {edge.data?.relType && <RelTypeBadge type={edge.data.relType} />}
-                                  </div>
-                                )
-                              })}
-                              {memoryCount > 3 && (
-                                <div style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>
-                                  + {memoryCount - 3} more
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
+                  <div ref={containerRef} style={{ flex: 1, width: '100%', minHeight: '500px', background: 'var(--bg-secondary)', cursor: 'grab' }}>
+                    <ForceGraph2D
+                      ref={fgRef}
+                      width={dimensions.width}
+                      height={dimensions.height}
+                      graphData={{
+                        nodes: connections.nodes,
+                        links: connections.edges
+                      }}
+                      nodeLabel="label"
+                      nodeColor={getNodeColor}
+                      nodeVal={getNodeVal}
+                      linkColor={(link: any) => {
+                        const type = link.data?.relType || ''
+                        if (type === 'has_entity') return '#9CA3AF40'
+                        if (type === 'has_project') return '#F43F5E60'
+                        if (type === 'has_story') return '#EAB30860'
+                        if (type === 'semantic') return '#8B5CF660'
+                        if (type === 'temporal') return '#F59E0B60'
+                        return '#D1D5DB'
+                      }}
+                      linkWidth={(link: any) => link.data?.score ? Math.max(1, link.data.score * 3) : 1}
+                      linkDirectionalParticles={2}
+                      linkDirectionalParticleSpeed={(d: any) => d.data?.score ? d.data.score * 0.01 : 0.005}
+                      d3VelocityDecay={0.3}
+                      onEngineStop={() => fgRef.current?.zoomToFit(400, 50)}
+                    />
                   </div>
                 </>
               ) : (
-                <EmptyLibrary title="No connections yet" icon={<Link2 size={28} />} />
+                <div style={{ padding: '40px' }}>
+                  <EmptyLibrary title="Upload to get started" icon={<Network size={28} />} />
+                </div>
               )}
             </div>
           )}
 
           {/* ── STORIES TAB ── */}
           {activeTab === 'stories' && (
-            <div>
+            <div style={{ flex: 1 }}>
               {(connections?.stories?.length ?? 0) > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {connections!.stories!.map(story => (
@@ -244,7 +227,7 @@ export default function Connections() {
                             <Clock size={12} />
                             {story.start_time ? formatTime(story.start_time) : 'Unknown time'}
                             {story.end_time && story.start_time !== story.end_time && (
-                              <span>→ {formatTime(story.end_time)}</span>
+                               <span>→ {formatTime(story.end_time)}</span>
                             )}
                           </div>
                         </div>
@@ -276,12 +259,12 @@ export default function Connections() {
 
           {/* ── PROJECTS TAB ── */}
           {activeTab === 'projects' && (
-            <div>
+            <div style={{ flex: 1 }}>
               {(connections?.projects?.length ?? 0) > 0 ? (
                 <div className="connections-grid">
                   {connections!.projects!.map(project => (
-                    <div key={project.name} className="connection-node">
-                      <div className="connection-icon">
+                    <div key={project.name} className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div className="connection-icon" style={{ marginBottom: '12px' }}>
                         <FolderKanban size={22} />
                       </div>
                       <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: '1.05rem', color: 'var(--primary-text)', marginBottom: '6px', textAlign: 'center' }}>
@@ -304,7 +287,7 @@ export default function Connections() {
               )}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   )

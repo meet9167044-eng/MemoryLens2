@@ -44,8 +44,12 @@ logger = logging.getLogger(__name__)
 
 def _compute_embedding(text: str) -> Optional[list]:
     """Return a float list embedding for text, or None on failure."""
+    from app.config import settings
+    if settings.EMBEDDING_PROVIDER == "local":
+        from app.core.local_embedder import embed_local
+        return embed_local(text)
+
     try:
-        from app.config import settings
         if not settings.GEMINI_API_KEY:
             return None
         import google.generativeai as genai
@@ -300,7 +304,7 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         ocr_result = run_ocr(image_path, screenshot_id=str(screenshot_id))
 
         if ocr_result.error:
-            raise RuntimeError(f"OCR error: {ocr_result.error}")
+            logger.warning("PaddleOCR skipped/failed: %s", ocr_result.error)
 
         # Create (or update) the Memory row for this screenshot
         existing_memory: Optional[Memory] = (
@@ -388,16 +392,22 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
             memory.domain = result.domain.lower().strip()
             logger.info("domain=%r for memory %s", result.domain, memory.id)
 
+        # Log warning if no OCR text was extracted from either source
+        if not memory.raw_ocr_text or not memory.raw_ocr_text.strip():
+            logger.warning("No OCR text extracted from either PaddleOCR or LLM for memory %s", memory.id)
+
         # Delete any stale entity rows and create fresh ones from LLM output
         for old_ent in list(memory.entities):
             db.delete(old_ent)
         db.flush()
 
+        from app.services.entity_normalizer import normalize_entity_name
+
         for ext_ent in result.entities:
             etype = _ENTITY_TYPE_MAP.get(ext_ent.type.lower(), EntityType.OTHER)
             db.add(Entity(
                 memory_id=memory.id,
-                name=ext_ent.name,
+                name=normalize_entity_name(ext_ent.name),
                 entity_type=etype,
                 confidence="high",
             ))
@@ -443,6 +453,7 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         if vector:
             # Store directly in the vector column
             memory.embedding = vector
+            # No longer write to memory.embedding_placeholder in Phase J
         db.flush()
 
     ok = _run_stage(db, jobs[JobStage.EMBEDDING], _embedding)
@@ -450,19 +461,28 @@ def _execute_pipeline(db: Session, screenshot_id: UUID) -> None:
         _fail_screenshot(db, screenshot)
         return
 
-    # â”€â”€ Stage 5: INDEXING (Relationships) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Stage 5: INDEXING (Relationships & Knowledge Graph) ──────────────
     def _relationships():
-        """Compute and persist relationships between this memory and others."""
+        """Compute and persist relationships, projects, and stories."""
         memory: Optional[Memory] = ctx.get("memory")
         if memory:
+            # 1. Standard relationships (semantic, temporal, domain, etc.)
             compute_relationships_for_memory(db, memory_id=memory.id)
+            
+            # 2. Phase K: Project detection (persists Project node and links it)
+            from app.services.project_detector import detect_projects_for_memory
+            detect_projects_for_memory(db, memory_id=memory.id)
+            
+            # 3. Phase K: Rebuild stories
+            from app.services.story_builder import rebuild_all_stories
+            rebuild_all_stories(db)
 
     ok = _run_stage(db, jobs[JobStage.INDEXING], _relationships)
     if not ok:
         _fail_screenshot(db, screenshot)
         return
 
-    # â”€â”€ Done â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Done ─────────────────────────────────────────────────────────────
     screenshot.status = ScreenshotStatus.COMPLETED
     db.commit()
     logger.info("Pipeline COMPLETED for screenshot %s", screenshot_id)

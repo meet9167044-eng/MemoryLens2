@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { format, subDays, eachDayOfInterval, isSameDay } from "date-fns"
 import { api, Memory } from "@/services/api"
@@ -154,7 +154,7 @@ export default function Timeline() {
           ))}
         </div>
       ) : (
-        <EmptyLibrary title="No timeline events" icon={<Clock size={28} />} />
+        <EmptyLibrary title="Upload to get started" icon={<Clock size={28} />} />
       )}
     </div>
   )

@@ -1,11 +1,15 @@
-# PRODUCT: MemoryLens Review 1
+# PRODUCT: MemoryLens
 
 ## Overview
 The application should feel like a professional developer productivity/productivity-memory tool. It should NOT look like a flashy AI demo.
 
+## Architecture
+The application is fully functional, consisting of a React frontend and a FastAPI backend.
+Please see `DEVELOPER.md` in the root of the repository for setup instructions.
+
 ## User State
 There is currently no authentication. The default user is "Virat". 
-The Overview greeting should always be: **"Good morning, Virat."** (Do NOT use "Good morning, DevJams.")
+The Overview greeting should always be: **"Good morning, Virat."**
 
 ## Primary Navigation and Screens
 
@@ -20,23 +24,22 @@ The main browsing screen.
 - **Behavior:** Cards should be clickable and lead to Memory Detail.
 
 ### 3. Memory Detail
-One of the most important screens for Review 1.
+One of the most important screens.
 - **Information Hierarchy:** Evidence ↓ Understanding ↓ Classification ↓ Relationships
 - **Content:** title, source, timestamp, screenshot (original evidence), summary, OCR text, entities, tags, related memories.
 
 ### 4. Search
-Operates only on the synthetic dataset.
-- **Behavior:** Simple local string matching is sufficient for Review 1. Do NOT implement real semantic/vector search.
+- **Behavior:** Full-text keyword search and semantic vector search using pgvector.
 - **Searchable fields:** title, OCR text, tags, entities, summary.
 
 ### 5. Timeline
 Displays Memories chronologically.
-- **Behavior:** Items grouped by date/time and clickable.
+- **Behavior:** Items grouped by date/time and clickable. Includes a 12-week activity heatmap.
 
 ### 6. Connections
 Shows relationships between Memories, Entities, and Topics.
-- **Behavior:** A simple visual relationship representation is sufficient. Do not over-engineer graph infrastructure.
+- **Behavior:** Displays structured graph UI linking Semantic Neighbors, Temporal Sequences, Domain Workflows, Projects, and Stories.
 
 ### 7. Insights
-Shows predefined synthetic patterns (e.g., "GPU debugging: 12 memories").
-- **Constraint:** These are synthetic observations. Do not claim that a real AI system generated them.
+Shows system analytics based on actual database activity.
+- **Content:** OCR confidence, extracted entities, top tags, and processing success metrics.

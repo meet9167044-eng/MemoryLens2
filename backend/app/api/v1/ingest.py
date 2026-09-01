@@ -12,16 +12,18 @@ daemon thread so the API returns 201 immediately while all processing
 import io
 import threading
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Request
 from fastapi.responses import FileResponse
 import os
 from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core.limiter import limiter
 from app.db.session import get_db
 from app.jobs.pipeline import run_pipeline
 from app.jobs.queue import pipeline_queue
+from app.models.processing_job import ProcessingJob
 from app.models.screenshot import Screenshot, ScreenshotStatus
 from app.schemas.ingest import ErrorResponse, ScreenshotUploadResponse, ScreenshotStatusResponse
 from app.services.storage import storage
@@ -91,7 +93,9 @@ def _validate_image(data: bytes, content_type: str, filename: str) -> None:
         "OCR and AI processing happen asynchronously in later pipeline stages."
     ),
 )
+@limiter.limit("10/minute")
 async def ingest_screenshot(
+    request: Request,
     file: UploadFile = File(..., description="The screenshot image file to ingest"),
     db: Session = Depends(get_db),
 ) -> ScreenshotUploadResponse:
@@ -192,9 +196,16 @@ def get_screenshot_status(screenshot_id: str, db: Session = Depends(get_db)):
     if not ss:
         raise HTTPException(status_code=404, detail="Screenshot not found.")
 
+    active_job = db.query(ProcessingJob).filter(
+        ProcessingJob.screenshot_id == uid,
+        ProcessingJob.status == "running"
+    ).first()
+    stage = active_job.stage.value if active_job else None
+
     return ScreenshotStatusResponse(
         screenshot_id=ss.id,
         status=ss.status.value,
+        stage=stage,
         original_filename=ss.original_filename,
         created_at=ss.created_at,
     )
@@ -233,7 +244,9 @@ def get_screenshot_image(screenshot_id: str, db: Session = Depends(get_db)):
         "Returns a summary of accepted and rejected files."
     ),
 )
+@limiter.limit("10/minute")
 async def bulk_ingest_screenshots(
+    request: Request,
     files: list[UploadFile] = File(..., description="Up to 50 screenshot files"),
     db: Session = Depends(get_db),
 ):

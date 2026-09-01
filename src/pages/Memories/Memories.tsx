@@ -90,6 +90,7 @@ export default function Memories() {
         </div>
       ) : (
         <EmptyLibrary
+          title="Upload to get started"
           icon={<Layers size={28} />}
           action={<UploadCta onClick={() => setShowUpload(true)} />}
         />

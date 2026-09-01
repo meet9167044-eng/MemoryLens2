@@ -23,18 +23,16 @@ from app.db.session import get_db
 from app.models.memory import Memory
 from app.models.entity import Entity
 from app.models.relationship import Relationship
-from app.services.story_builder import build_stories
-from app.services.project_detector import build_project_clusters
+from app.models.project import Project
+from app.models.story import Story
 
 router = APIRouter()
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Response shapes (plain dicts — intentionally simple for graph lib flexibility)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _memory_node(m: Memory) -> Dict[str, Any]:
-    # Phase B: prefer captured_at (real screenshot time) over created_at (upload time)
     real_ts = m.captured_at or m.created_at
     return {
         "id": f"mem_{m.id}",
@@ -50,7 +48,6 @@ def _memory_node(m: Memory) -> Dict[str, Any]:
         },
     }
 
-
 def _entity_node(e: Entity) -> Dict[str, Any]:
     return {
         "id": f"ent_{e.id}",
@@ -62,6 +59,38 @@ def _entity_node(e: Entity) -> Dict[str, Any]:
         },
     }
 
+def _project_node(p: Project) -> Dict[str, Any]:
+    return {
+        "id": f"proj_{p.id}",
+        "type": "project",
+        "label": p.name,
+        "data": {
+            "projectId": str(p.id),
+            "confidence": p.confidence,
+        },
+    }
+
+def _story_node(s: Story) -> Dict[str, Any]:
+    return {
+        "id": f"story_{s.id}",
+        "type": "story",
+        "label": s.title,
+        "data": {
+            "storyId": str(s.id),
+            "startTime": s.start_time.isoformat() if s.start_time else "",
+            "endTime": s.end_time.isoformat() if s.end_time else "",
+        },
+    }
+
+def _domain_node(domain: str) -> Dict[str, Any]:
+    return {
+        "id": f"dom_{domain}",
+        "type": "domain",
+        "label": domain,
+        "data": {
+            "domain": domain,
+        },
+    }
 
 def _relationship_edge(rel: Relationship, idx: int) -> Dict[str, Any]:
     return {
@@ -76,16 +105,14 @@ def _relationship_edge(rel: Relationship, idx: int) -> Dict[str, Any]:
         },
     }
 
-
-def _entity_memory_edge(m: Memory, e: Entity, idx: int) -> Dict[str, Any]:
+def _generic_edge(source_id: str, target_id: str, label: str, rel_type: str, edge_id: str) -> Dict[str, Any]:
     return {
-        "id": f"me_edge_{idx}",
-        "source": f"mem_{m.id}",
-        "target": f"ent_{e.id}",
-        "label": "has entity",
-        "data": {"score": 1.0, "relType": "has_entity"},
+        "id": edge_id,
+        "source": source_id,
+        "target": target_id,
+        "label": label,
+        "data": {"score": 1.0, "relType": rel_type},
     }
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fallback demo graph from synthetic data
@@ -97,6 +124,23 @@ def _synthetic_demo_graph() -> Dict[str, Any]:
     nodes: List[Dict] = []
     edges: List[Dict] = []
     seen_entities: Dict[str, int] = {}
+    seen_domains: set = set()
+
+    # Create dummy project for internship
+    nodes.append({
+        "id": "proj_internship",
+        "type": "project",
+        "label": "Internship Project",
+        "data": {"confidence": 1.0}
+    })
+    
+    # Create dummy story
+    nodes.append({
+        "id": "story_1",
+        "type": "story",
+        "label": "Demo Session",
+        "data": {}
+    })
 
     for i, mem in enumerate(SYNTHETIC_MEMORIES[:15]):  # limit for perf
         nodes.append({
@@ -111,6 +155,20 @@ def _synthetic_demo_graph() -> Dict[str, Any]:
             },
         })
 
+        # Add to dummy story
+        edges.append(_generic_edge(f"mem_{mem['id']}", "story_1", "in story", "has_story", f"ms_{i}"))
+
+        # Add to internship project if tagged
+        if "internship" in mem.get("tags", []):
+            edges.append(_generic_edge(f"mem_{mem['id']}", "proj_internship", "in project", "has_project", f"mp_{i}"))
+
+        domain = mem.get("source", {}).get("app", "").lower()
+        if domain and domain not in ("unknown", ""):
+            if domain not in seen_domains:
+                seen_domains.add(domain)
+                nodes.append(_domain_node(domain))
+            edges.append(_generic_edge(f"mem_{mem['id']}", f"dom_{domain}", "has domain", "has_domain", f"md_{i}"))
+
         for ent in mem.get("entities", []):
             ent_key = ent["name"].lower()
             if ent_key not in seen_entities:
@@ -121,13 +179,7 @@ def _synthetic_demo_graph() -> Dict[str, Any]:
                     "label": ent["name"],
                     "data": {"entityType": ent.get("type", "other")},
                 })
-            edges.append({
-                "id": f"me_{i}_{ent_key}",
-                "source": f"mem_{mem['id']}",
-                "target": f"ent_{ent_key}",
-                "label": "has entity",
-                "data": {"score": 1.0, "relType": "has_entity"},
-            })
+            edges.append(_generic_edge(f"mem_{mem['id']}", f"ent_{ent_key}", "has entity", "has_entity", f"me_{i}_{ent_key}"))
 
         # Tag-based links to nearby memories
         for j, other in enumerate(SYNTHETIC_MEMORIES[:15]):
@@ -154,9 +206,8 @@ def _synthetic_demo_graph() -> Dict[str, Any]:
     "/connections",
     summary="Memory relationship graph",
     description=(
-        "Returns nodes (Memory + Entity) and edges (relationships) for the "
-        "graph visualizer. Uses real DB data when memories have been uploaded, "
-        "otherwise returns a demo graph from synthetic data."
+        "Returns nodes (Memory, Entity, Project, Story, Domain) and edges for the "
+        "graph visualizer. Uses real DB data when memories have been uploaded."
     ),
 )
 def get_connections(
@@ -172,9 +223,24 @@ def get_connections(
     # Real DB graph
     memories = db.query(Memory).order_by(Memory.created_at.desc()).limit(limit).all()
     relationships = db.query(Relationship).all()
+    projects = db.query(Project).all()
+    stories = db.query(Story).order_by(Story.start_time.desc()).limit(limit).all()
 
-    nodes: List[Dict] = [_memory_node(m) for m in memories]
+    nodes: List[Dict] = []
     edges: List[Dict] = []
+    
+    seen_domains: set = set()
+
+    for m in memories:
+        nodes.append(_memory_node(m))
+        
+        # Virtual domain node
+        domain = (m.domain or "").strip().lower()
+        if domain and domain != "unknown":
+            if domain not in seen_domains:
+                seen_domains.add(domain)
+                nodes.append(_domain_node(domain))
+            edges.append(_generic_edge(f"mem_{m.id}", f"dom_{domain}", "has domain", "has_domain", f"md_{m.id}"))
 
     # Memory–Relationship edges
     for i, rel in enumerate(relationships):
@@ -189,37 +255,51 @@ def get_connections(
                 if e.id not in seen_entity_ids:
                     seen_entity_ids.add(e.id)
                     nodes.append(_entity_node(e))
-                edges.append(_entity_memory_edge(m, e, me_idx))
+                edges.append(_generic_edge(f"mem_{m.id}", f"ent_{e.id}", "has entity", "has_entity", f"me_{me_idx}"))
                 me_idx += 1
 
-    # Phase D: Build stories (temporal session groups)
-    stories_raw = build_stories(db, limit=limit)
-    stories = [
-        {
-            "id": s.id,
+    # Project nodes and edges
+    mp_idx = 0
+    for p in projects:
+        nodes.append(_project_node(p))
+        for m in p.memories:
+            edges.append(_generic_edge(f"mem_{m.id}", f"proj_{p.id}", "in project", "has_project", f"mp_{mp_idx}"))
+            mp_idx += 1
+
+    # Story nodes and edges
+    ms_idx = 0
+    for s in stories:
+        nodes.append(_story_node(s))
+        for m in s.memories:
+            edges.append(_generic_edge(f"mem_{m.id}", f"story_{s.id}", "in story", "has_story", f"ms_{ms_idx}"))
+            ms_idx += 1
+
+    # Format for backwards compatibility with the old UI (which expects these arrays)
+    formatted_stories = []
+    for s in stories:
+        formatted_stories.append({
+            "id": str(s.id),
             "title": s.title,
-            "memory_ids": s.memory_ids,
+            "memory_ids": [str(m.id) for m in s.memories],
             "start_time": s.start_time.isoformat() if s.start_time else None,
             "end_time": s.end_time.isoformat() if s.end_time else None,
-            "tags": s.tags,
-            "memory_count": len(s.memory_ids),
-        }
-        for s in stories_raw
-    ]
+            "tags": [],
+            "memory_count": len(s.memories),
+        })
 
-    # Phase D: Build project clusters
-    project_clusters_raw = build_project_clusters(db)
-    projects = [
-        {"name": name, "memory_ids": ids, "memory_count": len(ids)}
-        for name, ids in project_clusters_raw.items()
-        if len(ids) >= 2  # only show projects with at least 2 memories
-    ]
+    formatted_projects = []
+    for p in projects:
+        formatted_projects.append({
+            "name": p.name,
+            "memory_ids": [str(m.id) for m in p.memories],
+            "memory_count": len(p.memories),
+        })
 
     return {
         "nodes": nodes,
         "edges": edges,
         "total_memories": count,
-        "stories": stories,
-        "projects": projects,
+        "stories": formatted_stories,
+        "projects": formatted_projects,
     }
 

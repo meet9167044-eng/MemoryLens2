@@ -32,58 +32,8 @@ def search(q: str, **params) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 1. Semantic recall — "GPU problem" → finds CUDA error (mem_1827)
+# 1. Semantic recall — (Moved to test_pgvector_search.py)
 # ---------------------------------------------------------------------------
-
-class TestSemanticRecall:
-    def test_gpu_problem_finds_cuda_error(self):
-        """
-        Core Phase 8 acceptance criterion:
-        Searching 'GPU problem' must return mem_1827 ('CUDA Out of Memory Error')
-        in the top results — demonstrates semantic recall beyond exact keyword match.
-        """
-        resp = search("GPU problem", limit=5)
-        assert resp.status_code == 200, resp.text
-
-        data = resp.json()
-        result_ids = [r["id"] for r in data["results"]]
-        assert "mem_1827" in result_ids, (
-            f"Expected mem_1827 in top-5 results for 'GPU problem', got: {result_ids}"
-        )
-
-    def test_cuda_error_query_returns_relevant_results(self):
-        """'CUDA error' should surface GPU/ML memories near the top."""
-        resp = search("CUDA error", limit=10)
-        assert resp.status_code == 200
-
-        data = resp.json()
-        ids = [r["id"] for r in data["results"]]
-        # At least mem_1827 and mem_1809 should appear
-        assert "mem_1827" in ids
-        assert "mem_1809" in ids
-
-    def test_internship_query_finds_internship_memories(self):
-        """'internship application' should return internship cluster."""
-        resp = search("internship application", limit=10)
-        assert resp.status_code == 200
-
-        data = resp.json()
-        ids = [r["id"] for r in data["results"]]
-        # At least one internship memory should appear
-        internship_ids = {"mem_1630", "mem_1635", "mem_1650", "mem_1660"}
-        found = internship_ids.intersection(ids)
-        assert len(found) >= 1, f"No internship memories found, got: {ids}"
-
-    def test_memorylens_query_finds_project_memories(self):
-        """'memorylens project' should return MemoryLens-related memories."""
-        resp = search("memorylens project", limit=10)
-        assert resp.status_code == 200
-
-        data = resp.json()
-        ids = [r["id"] for r in data["results"]]
-        memorylens_ids = {"mem_1902", "mem_1910", "mem_1950"}
-        found = memorylens_ids.intersection(ids)
-        assert len(found) >= 1, f"No MemoryLens memories found, got: {ids}"
 
 
 # ---------------------------------------------------------------------------

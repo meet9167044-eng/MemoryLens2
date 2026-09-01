@@ -91,7 +91,8 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
         items.map(async ({ id }) => {
           const status = await api.getIngestStatus(id)
           const statusValue = status?.status?.toLowerCase() || "processing"
-          const label = statusValue === "completed" ? "✓ Done" : statusValue
+          const stageValue = status?.stage || ""
+          const label = statusValue === "completed" ? "✓ Done" : (stageValue ? `Processing (${stageValue})` : statusValue)
           setProgress(prev =>
             prev.map(p => p.id === id ? { ...p, status: label } : p)
           )

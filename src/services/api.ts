@@ -127,6 +127,7 @@ export interface IngestResponse {
 export interface IngestStatusResponse {
   screenshot_id: string
   status: string
+  stage?: string
   original_filename: string
   created_at: string
 }

@@ -22,7 +22,10 @@ Routers registered:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 
+from app.core.limiter import limiter
 from app.core.config import settings
 from app.api.v1 import health, search, memories, timeline, insights
 from app.api.v1.ingest import router as ingest_router
@@ -58,6 +61,9 @@ app = FastAPI(
     redoc_url=f"{settings.API_V1_STR}/redoc",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ---------------------------------------------------------------------------
 # CORS — allow the Vite frontend to call the API during development

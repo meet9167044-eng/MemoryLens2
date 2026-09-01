@@ -1,4 +1,4 @@
-﻿"""
+"""
 Natural Language Query Parser (Phase G)
 ========================================
 Extracts intent and implicit filters (dates, apps, entities, tags) from a search query using Gemini.
@@ -32,6 +32,8 @@ def parse_search_query(query: str) -> Dict[str, Any]:
     default_res = {
         "query": query,
         "app": None,
+        "project": None,
+        "story": None,
         "date_from": None,
         "date_to": None,
         "tags": []
@@ -61,6 +63,8 @@ Given the user's search query, extract implicit filters and return the rest of t
 
 Extract these fields if present:
 - app: The name of an application (e.g., "VS Code", "Chrome", "Slack").
+- project: A project name or context (e.g., "internship", "hackathon", "memorylens").
+- story: A story or session title (e.g., "session", "morning work").
 - date_from: ISO 8601 date string (YYYY-MM-DD). Parse relative terms like "last week", "yesterday", "in January 2024".
 - date_to: ISO 8601 date string. If the query implies a single day (like "yesterday"), date_from and date_to should be the same.
 - tags: Array of specific keywords/tags mentioned (e.g., "error", "invoice", "meeting").
@@ -74,6 +78,8 @@ Respond ONLY with valid JSON matching this schema:
 {{
   "query": string,
   "app": string | null,
+  "project": string | null,
+  "story": string | null,
   "date_from": string | null,
   "date_to": string | null,
   "tags": [string]

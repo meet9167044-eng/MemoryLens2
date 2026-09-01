@@ -47,7 +47,7 @@ export default function Insights() {
           ))}
         </div>
       ) : empty ? (
-        <EmptyLibrary title="No insights yet" />
+        <EmptyLibrary title="Upload to get started" />
       ) : (
         <>
           <div className="stats-row">

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { format } from "date-fns"
 import { api, SearchResult } from "@/services/api"
@@ -146,7 +146,7 @@ export default function Search() {
       <div style={{ flex: 1 }}>
         {libraryEmpty && !hasSearched && (
           <div style={{ marginBottom: "24px" }}>
-            <EmptyLibrary title="Nothing to search yet" icon={<SearchIcon size={28} />} />
+            <EmptyLibrary title="Upload to get started" icon={<SearchIcon size={28} />} />
           </div>
         )}
         <form onSubmit={handleSearch} style={{ marginBottom: '32px' }}>
@@ -222,7 +222,7 @@ export default function Search() {
                 ))}
               </div>
             ) : libraryEmpty ? (
-              <EmptyLibrary title="Nothing to search yet" icon={<SearchIcon size={28} />} />
+              <EmptyLibrary title="Upload to get started" icon={<SearchIcon size={28} />} />
             ) : (
               <div className="empty-state" style={{ height: '300px' }}>
                 <div className="empty-icon"><SearchIcon size={28} /></div>

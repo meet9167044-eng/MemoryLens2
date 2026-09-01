@@ -15,8 +15,8 @@ pillow>=10.3.0
 opencv-python
 
 # ── Phase 5: OCR (optional — Gemini LLM replaces this) ────
-# paddleocr
-# paddlepaddle
+paddleocr
+paddlepaddle
 
 # ── Phase B: Multimodal LLM (Gemini + OpenAI) ─────────────
 google-generativeai>=0.7.0
@@ -33,3 +33,4 @@ sentence-transformers>=2.7.0
 
 # Phase E: Auto-Ingestion (folder watcher)
 watchdog>=4.0.0
+slowapi>=0.1.9

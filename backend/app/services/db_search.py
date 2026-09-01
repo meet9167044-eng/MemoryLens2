@@ -210,6 +210,16 @@ def _keyword_clause(q: str):
         )
     return or_(*clauses)
 
+def _fts_components(q: str):
+    terms = [t for t in re.split(r"[^a-z0-9]+", q.lower()) if len(t) > 1][:8]
+    if not terms:
+        return None, None
+    fts_query = ' & '.join(terms)
+    # create tsvector from title, summary, and ocr
+    tsvec = func.to_tsvector('english', func.coalesce(Memory.title, '') + ' ' + func.coalesce(Memory.summary, '') + ' ' + func.coalesce(Memory.raw_ocr_text, ''))
+    tsq = func.to_tsquery('english', fts_query)
+    return tsvec, tsq
+
 
 class DBSearchService:
     """Bounded hybrid search over Memory rows (ANN top-K + keyword top-K)."""
@@ -219,6 +229,8 @@ class DBSearchService:
         self.parsed_nlp = None
 
     def _apply_filters(self, query, request: SearchRequest):
+        from app.models.project import Project
+        from app.models.story import Story
         ts = func.coalesce(Memory.captured_at, Memory.created_at)
 
         if request.date_from:
@@ -233,8 +245,21 @@ class DBSearchService:
                 query = query.filter(ts < dt_to)
         if request.source_type:
             query = query.filter(Memory.content_type == request.source_type)
-        if getattr(self, "parsed_nlp", None) and self.parsed_nlp.get("app"):
+        if request.app:
+            query = query.filter(Memory.app_detected.ilike(f"%{request.app}%"))
+        elif getattr(self, "parsed_nlp", None) and self.parsed_nlp.get("app"):
             query = query.filter(Memory.app_detected.ilike(f"%{self.parsed_nlp['app']}%"))
+            
+        if request.project:
+            query = query.filter(Memory.projects.any(Project.name.ilike(f"%{request.project}%")))
+        elif getattr(self, "parsed_nlp", None) and self.parsed_nlp.get("project"):
+            query = query.filter(Memory.projects.any(Project.name.ilike(f"%{self.parsed_nlp['project']}%")))
+            
+        if request.story:
+            query = query.filter(Memory.stories.any(Story.title.ilike(f"%{request.story}%")))
+        elif getattr(self, "parsed_nlp", None) and self.parsed_nlp.get("story"):
+            query = query.filter(Memory.stories.any(Story.title.ilike(f"%{self.parsed_nlp['story']}%")))
+            
         return query
 
     def _facets(self, request: SearchRequest) -> dict:
@@ -289,7 +314,7 @@ class DBSearchService:
 
         recent = (
             filtered.filter(Memory.embedding.isnot(None))
-            .order_by(Memory.created_at.desc())
+            .order_by(func.coalesce(Memory.captured_at, Memory.created_at).desc())
             .limit(ANN_K)
             .all()
         )
@@ -306,11 +331,14 @@ class DBSearchService:
         q = request.q.strip()
         nlp_applied = False
 
-        if q and not (request.date_from or request.date_to or request.source_type):
+        if q and not (request.date_from or request.date_to or request.source_type or request.app or request.project or request.story):
             parsed = parse_search_query(q)
-            if parsed.get("date_from") or parsed.get("app") or parsed.get("tags"):
+            if parsed.get("date_from") or parsed.get("app") or parsed.get("tags") or parsed.get("project") or parsed.get("story"):
                 request.date_from = parsed.get("date_from") or request.date_from
                 request.date_to = parsed.get("date_to") or request.date_to
+                request.app = parsed.get("app") or request.app
+                request.project = parsed.get("project") or request.project
+                request.story = parsed.get("story") or request.story
                 q = parsed.get("query", q).strip()
                 nlp_applied = True
                 self.parsed_nlp = parsed
@@ -332,16 +360,40 @@ class DBSearchService:
         if query_vec:
             by_id, sem_scores = self._ann_candidates(filtered, query_vec)
 
-        kw_clause = _keyword_clause(q)
-        if kw_clause is not None:
-            kw_rows = (
-                filtered.filter(kw_clause)
-                .order_by(Memory.created_at.desc())
-                .limit(KEYWORD_K)
-                .all()
-            )
-            for mem in kw_rows:
-                by_id[mem.id] = mem
+        tsvec, tsq = _fts_components(q) if q else (None, None)
+        if tsvec is not None and tsq is not None:
+            try:
+                kw_rows = (
+                    filtered.filter(tsvec.op('@@')(tsq))
+                    .order_by(func.ts_rank(tsvec, tsq).desc())
+                    .limit(KEYWORD_K)
+                    .all()
+                )
+                for mem in kw_rows:
+                    by_id[mem.id] = mem
+            except Exception as exc:
+                logger.debug("pg FTS unavailable (%s); fallback to ilike", exc)
+                kw_clause = _keyword_clause(q)
+                if kw_clause is not None:
+                    kw_rows = (
+                        filtered.filter(kw_clause)
+                        .order_by(func.coalesce(Memory.captured_at, Memory.created_at).desc())
+                        .limit(KEYWORD_K)
+                        .all()
+                    )
+                    for mem in kw_rows:
+                        by_id[mem.id] = mem
+        else:
+            kw_clause = _keyword_clause(q)
+            if kw_clause is not None:
+                kw_rows = (
+                    filtered.filter(kw_clause)
+                    .order_by(func.coalesce(Memory.captured_at, Memory.created_at).desc())
+                    .limit(KEYWORD_K)
+                    .all()
+                )
+                for mem in kw_rows:
+                    by_id[mem.id] = mem
 
         candidates = list(by_id.values())
         facets = self._facets(request)
@@ -353,6 +405,21 @@ class DBSearchService:
                 date_str = ts.strftime("%Y-%m-%d")
                 facets["dates"][date_str] = facets["dates"].get(date_str, 0) + 1
 
+        # Calculate FTS ranks for all candidates if possible
+        kw_scores = {}
+        if tsvec is not None and tsq is not None and candidates:
+            try:
+                candidate_ids = [m.id for m in candidates]
+                rank_rows = (
+                    self.db.query(Memory.id, func.ts_rank(tsvec, tsq).label("rank"))
+                    .filter(Memory.id.in_(candidate_ids))
+                    .all()
+                )
+                for r in rank_rows:
+                    kw_scores[r.id] = max(0.0, min(1.0, float(r.rank) * 2.0)) # rough normalization
+            except Exception:
+                pass
+
         scored: List[Tuple[float, str, Memory]] = []
         for mem in candidates:
             sem = sem_scores.get(mem.id, 0.0)
@@ -360,7 +427,13 @@ class DBSearchService:
                 stored = _as_vector_list(mem.embedding)
                 if stored:
                     sem = _cosine(query_vec, stored)
-            kw = _keyword_hit(q, mem) if q else 0.0
+            
+            # Use DB ts_rank if available, else python heuristic
+            if mem.id in kw_scores:
+                kw = kw_scores[mem.id]
+            else:
+                kw = _keyword_hit(q, mem) if q else 0.0
+
             score = 0.6 * sem + 0.4 * kw
             if not q or score >= 0.03:
                 match_type = (

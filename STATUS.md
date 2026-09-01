@@ -20,12 +20,7 @@
 - [x] Memories API sorts by `captured_at` desc for correct chronological ordering
 - [x] Frontend `InsightStats` type updated with new fields
 
-- [ ] Add `app_detected` column to Memory model
-- [ ] Extract `captured_at` from EXIF in preprocessing stage
-- [ ] Persist `app_detected` from LLM extraction
-- [ ] Show `app_detected` in frontend
-
-## Phase C — Real Vector Search ⬜ PENDING
+## Phase C — Real Vector Search 🟡 PARTIAL (column+HNSW yes, ANN search no)
 ## Phase D — Knowledge Graph Engine ✅ DONE
 - [x] Semantic relationships: `_score_semantic()` using pgvector cosine similarity
 - [x] Temporal relationships: `_score_temporal()` with 2-hour decay window on `captured_at`
@@ -40,11 +35,18 @@
 - [x] Background Pipeline Queue (`PriorityQueue` with fixed worker pool)
 - [x] O(n²) Relationship Optimization (Candidate pre-fetching via exact/overlap filtering and pgvector)
 - [x] File hash deduplication at ingest
+
 ## Phase G — UX Polish ✅ DONE
 - [x] NL Query Parsing using Gemini API
 - [x] Search Facets for Apps and Dates
 - [x] Related Screenshots right-sidebar layout
 - [x] Timeline 12-week Calendar Heatmap
 - [x] Contextual Chat (search results passed to chat)
+
 ## Phase H — Demo Preparation ⬜ PENDING
-## Phase I — Extra Improvements ⬜ PENDING
+## Phase I — FTS, Rate Limits, Search Edge Cases ✅ DONE
+## Phase J — Strict Clustering & ANN Search ✅ DONE
+## Phase K — Robust Graph Construction ✅ DONE
+## Phase L — Honest UX ✅ DONE
+## Phase M — Local OCR & Offline Path ✅ DONE
+## Phase N — Docs Truth ✅ DONE
