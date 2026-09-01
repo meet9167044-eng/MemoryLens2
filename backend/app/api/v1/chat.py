@@ -14,17 +14,16 @@ Falls back to a helpful "no data" message when:
 
 from __future__ import annotations
 
-import json
-import math
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.memory import Memory
+from app.services.db_search import _embed_query, retrieve_by_embedding
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -58,81 +57,29 @@ class ChatResponse(BaseModel):
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _cosine(a: list, b: list) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    mag_a = math.sqrt(sum(x * x for x in a))
-    mag_b = math.sqrt(sum(y * y for y in b))
-    if mag_a == 0 or mag_b == 0:
-        return 0.0
-    return dot / (mag_a * mag_b)
-
-
-def _embed_query(q: str) -> Optional[list]:
-    try:
-        from app.config import settings
-        if not settings.GEMINI_API_KEY:
-            return None
-        from google import genai
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        result = client.models.embed_content(
-            model=settings.EMBEDDING_MODEL,
-            contents=q,
-        )
-        return result.embeddings[0].values
-    except Exception as exc:
-        logger.warning("Query embedding failed: %s", exc)
-        return None
-
-
-def _retrieve_top_memories(db: Session, query_vec: Optional[list], q: str, context_memory_ids: Optional[List[str]] = None, k: int = 5) -> List[Memory]:
-    """Retrieve top-k most relevant memories using vector similarity + keyword fallback, optionally pinning specific memories."""
-    # 1. If explicit context is provided, fetch those first
-    pinned = []
+def _retrieve_top_memories(
+    db: Session,
+    query_vec: Optional[list],
+    q: str,
+    context_memory_ids: Optional[List[str]] = None,
+    k: int = 5,
+) -> List[Memory]:
+    """Top-k memories via pgvector ANN on memory.embedding (not embedding_placeholder)."""
+    pinned: List[Memory] = []
     if context_memory_ids:
         from sqlalchemy import cast, String
         pinned = db.query(Memory).filter(Memory.id.cast(String).in_(context_memory_ids)).all()
-        # If we have enough pinned memories, we can just return them or supplement them
-        
-    # We still fetch others to supplement up to K
-    memories = db.query(Memory).all()
-    if not memories:
-        return pinned
-        
-    pinned_ids = {str(m.id) for m in pinned}
 
-    if query_vec:
-        scored = []
-        for m in memories:
-            score = 0.0
-            if m.embedding_placeholder:
-                try:
-                    stored = json.loads(m.embedding_placeholder)
-                    if isinstance(stored, list) and stored:
-                        score = _cosine(query_vec, stored)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            # Keyword boost
-            q_lower = q.lower()
-            doc = f"{m.title or ''} {m.summary or ''} {m.raw_ocr_text or ''}".lower()
-            if q_lower in doc:
-                score += 0.3
-            scored.append((score, m))
-        scored.sort(key=lambda x: x[0], reverse=True)
-        # Exclude pinned to avoid duplicates, then combine
-        extra = [m for _, m in scored if str(m.id) not in pinned_ids]
-        return (pinned + extra)[:max(k, len(pinned))]
-    else:
-        # Keyword-only fallback
-        q_lower = q.lower()
-        scored = []
-        for m in memories:
-            doc = f"{m.title or ''} {m.summary or ''} {m.raw_ocr_text or ''}".lower()
-            if q_lower in doc:
-                scored.append(m)
-        extra = [m for m in scored if str(m.id) not in pinned_ids]
-        if not extra:
-            extra = [m for m in memories if str(m.id) not in pinned_ids]
-        return (pinned + extra)[:max(k, len(pinned))]
+    pinned_ids = {str(m.id) for m in pinned}
+    extra = retrieve_by_embedding(
+        db,
+        query_vec,
+        q,
+        k=max(k, 1),
+        exclude_ids=pinned_ids,
+    )
+    combined = pinned + extra
+    return combined[: max(k, len(pinned))]
 
 
 def _build_context(memories: List[Memory]) -> str:

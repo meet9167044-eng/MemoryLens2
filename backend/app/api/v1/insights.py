@@ -63,6 +63,17 @@ def get_insights(db: Session = Depends(get_db)) -> Dict[str, Any]:
     content_type_counts = Counter(m.content_type for m in memories if m.content_type)
     app_breakdown = [{"name": ct, "count": c} for ct, c in content_type_counts.most_common()]
 
+    today = datetime.utcnow().date()
+    activity_by_day: List[Dict[str, Any]] = []
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        count = 0
+        for m in memories:
+            ts = m.captured_at or m.created_at
+            if ts and ts.replace(tzinfo=None).date() == day:
+                count += 1
+        activity_by_day.append({"date": day.isoformat(), "count": count})
+
     return {
         "total_memories": total_memories,
         "total_entities": total_entities,
@@ -75,4 +86,5 @@ def get_insights(db: Session = Depends(get_db)) -> Dict[str, Any]:
         "top_tags": top_tags,
         "top_entities": top_entities,
         "app_breakdown": app_breakdown,
+        "activity_by_day": activity_by_day,
     }

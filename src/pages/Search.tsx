@@ -1,8 +1,9 @@
-﻿import React, { useState } from "react"
+﻿import React, { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { format } from "date-fns"
 import { api, SearchResult } from "@/services/api"
 import { Search as SearchIcon, Clock, Layers, Loader, X, Filter } from "lucide-react"
+import { EmptyLibrary } from "@/components/ui/EmptyLibrary"
 
 export default function Search() {
   const [query, setQuery] = useState("")
@@ -12,6 +13,7 @@ export default function Search() {
   const [loading, setLoading] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const [nlpApplied, setNlpApplied] = useState(false)
+  const [libraryEmpty, setLibraryEmpty] = useState(false)
 
   // Hard filters
   const [sourceType, setSourceType] = useState("")
@@ -19,6 +21,12 @@ export default function Search() {
   const [dateTo, setDateTo] = useState("")
 
   const navigate = useNavigate()
+
+  useEffect(() => {
+    api.getInsights().then(stats => {
+      setLibraryEmpty((stats?.total_memories ?? 0) === 0)
+    })
+  }, [])
 
   const handleSearch = async (e?: React.FormEvent, overrideFilters?: any) => {
     e?.preventDefault()
@@ -136,6 +144,11 @@ export default function Search() {
 
       {/* MAIN CONTENT: Search bar + Results */}
       <div style={{ flex: 1 }}>
+        {libraryEmpty && !hasSearched && (
+          <div style={{ marginBottom: "24px" }}>
+            <EmptyLibrary title="Nothing to search yet" icon={<SearchIcon size={28} />} />
+          </div>
+        )}
         <form onSubmit={handleSearch} style={{ marginBottom: '32px' }}>
           <div className="search-bar-wrap" style={{ maxWidth: '100%' }}>
             <SearchIcon className="search-icon" size={22} />
@@ -208,6 +221,8 @@ export default function Search() {
                   </div>
                 ))}
               </div>
+            ) : libraryEmpty ? (
+              <EmptyLibrary title="Nothing to search yet" icon={<SearchIcon size={28} />} />
             ) : (
               <div className="empty-state" style={{ height: '300px' }}>
                 <div className="empty-icon"><SearchIcon size={28} /></div>

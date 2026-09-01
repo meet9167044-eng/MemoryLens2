@@ -1,6 +1,8 @@
 # MemoryLens — Correction & Implementation Plan
 
-This document breaks down the end-to-end implementation plan into actionable, step-by-step phases. It will serve as our master checklist to track progress as we fix bugs and build out the knowledge graph engine.
+Master checklist. **Phases A–H are done.** Remaining work is **Phases I–N** (honest search, graph v2, honest UX, local OCR, docs). File-level actions for I–N live in [`implementation_plan.md`](implementation_plan.md).
+
+This document tracks progress. Mark boxes here as work lands.
 
 ## Phase A: Codebase Cleanup & Fixes ✅ COMPLETE
 *Goal: Fix immediate bugs (missing metadata, invalid models) and remove dead code.*
@@ -76,10 +78,107 @@ This document breaks down the end-to-end implementation plan into actionable, st
 - `[x]` **Demo Script**: Created `scripts/demo_flow.md` — 8-scene guided walkthrough (Search → Memory Detail → Knowledge Graph → Timeline → Chat → Insights) with talking points and Q&A.
 - `[x]` **README Overhaul**: Rewrote `README.md` to a punchy pitch with badges, architecture diagram, quick-start (5 commands), feature list, tech stack table, API reference, and demo section.
 
-## Phase I: Extra Improvements
-*Goal: Additional robust enhancements.*
+## Remaining Gaps After Phases A–H (Sept 2026 audit)
 
-- `[ ]` **Local OCR**: Re-enable PaddleOCR as a fallback local path.
-- `[ ]` **Entity Normalization**: Build a normalizer to merge aliases (e.g., "vscode" and "VS Code").
-- `[ ]` **Rate Limiting**: Add upload limits to the ingest API.
-- `[ ]` **Job Visibility**: Poll pipeline status from the frontend upload modal to show actual progress.
+Phases A–H shipped the skeleton of the engine. These gaps are still open and are the reason the original audit is **not fully solved**:
+
+| Gap | Why it still matters |
+|---|---|
+| Search loads every memory, then re-ranks in Python | pgvector/HNSW exists but is not used as ANN top-K — still O(n) |
+| Chat RAG reads `embedding_placeholder` JSON | Semantic chat ignores the real `embedding` column |
+| Search date filters use `created_at` | “Internship from January” filters upload time, not screenshot time |
+| Synthetic search fallback when DB is empty | Search looks populated; Memories/Timeline look empty |
+| Insights UI hardcodes `98.2%` OCR | Backend already returns `avg_confidence`; frontend ignores it |
+| Connections is still a card grid | Tabs exist; no force-directed graph; no first-class project/person/domain tables |
+| PaddleOCR commented out in `requirements.txt` | Local OCR path exists in code but is not installable from deps |
+| Dead frontend data layer | `memoryService.ts` + `mockMemories.ts` unused by live routes |
+| Stale docs | `docs/PRODUCT.md`, `docs/PROJECT.md`, `docs/STATUS.md` still say frontend-only |
+
+---
+
+## Phase I: Extra Improvements ⬜ PENDING
+*Goal: Small robustness items left from the original plan.*
+
+- `[ ]` **Entity Normalization**: New `backend/app/services/entity_normalizer.py` — merge aliases (`vscode` / `VS Code` / `Visual Studio Code`) before insert.
+- `[ ]` **Rate Limiting**: `slowapi` on ingest (`10 uploads / min / IP`).
+- `[ ]` **Job Visibility**: Upload modal polls `GET /api/v1/ingest/{screenshot_id}` every 2s and shows stage: Preprocessing → OCR → AI → Embedding → Indexing.
+- `[ ]` **App filter on search**: Support `?app=VS Code` → `Memory.app_detected.ilike(...)`.
+
+---
+
+## Phase J: Search v2 — Honest ANN Retrieval ⬜ PENDING
+*Goal: “Find the CUDA error screenshot” is O(log n) at 5,000+ rows, and chat uses the same vectors as search.*
+
+- `[ ]` **ANN top-K in `db_search.py`**: `ORDER BY embedding <=> :query_vec LIMIT k` (k ≈ 50–100), then hybrid re-rank (0.6 cosine + 0.4 keyword/FTS). Do **not** load the full table.
+- `[ ]` **PostgreSQL FTS**: Add `tsvector` (or `to_tsvector` on title/summary/ocr) and mix `ts_rank` into hybrid score instead of Python substring hits only.
+- `[ ]` **Date filters on `captured_at`**: Replace `Memory.created_at` bounds in `db_search.py` with `Memory.captured_at` (fallback to `created_at` if null).
+- `[ ]` **Chat retrieval on `memory.embedding`**: Rewrite `backend/app/api/v1/chat.py` to use pgvector cosine, not `json.loads(embedding_placeholder)`.
+- `[ ]` **Drop synthetic search fallback**: `_pick_service()` always uses `DBSearchService`. Empty DB → empty results, same as Memories/Timeline.
+- `[ ]` **Deprecate `embedding_placeholder`**: Stop writing it; optional later migration to drop the column.
+- `[ ]` **Tests**: `tests/test_pgvector_search.py` — ANN ordering, date filter on `captured_at`, empty-DB returns `total=0`.
+
+**Acceptance:** 1,000 seeded memories; search “CUDA error” returns the right row in the first page without loading all rows into Python.
+
+---
+
+## Phase K: Knowledge Graph v2 — First-Class Nodes + Real Graph UI ⬜ PENDING
+*Goal: Close the differentiator. “Show everything related to my internship from January” is a graph query, not tag overlap.*
+
+- `[ ]` **Project table**: `projects` + `memory_projects` association (name, description, color, confidence). Persist `project_detector` output instead of computing only at read time.
+- `[ ]` **Person / Domain nodes**: Either dedicated tables or typed graph nodes stored from entities (`PERSON`) and `memory.domain`. Expose as node types in the Connections API.
+- `[ ]` **Story persistence**: `stories` table from `story_builder.py` (title, date_start, date_end, memory_ids). Rebuild on ingest / nightly, not only on GET.
+- `[ ]` **Semantic threshold**: Lower `_score_semantic` gate from `0.75` → `0.65` so related-but-not-identical screenshots still link.
+- `[ ]` **NL + graph path**: Query “internship from January” → date window on `captured_at` + project/story/entity filter, then related memories.
+- `[ ]` **Force graph UI**: Replace Connections card grid with `react-force-graph-2d` (or `@react-sigma/core`). Node types: memory / entity / project / domain. Edge color by `rel_type`. Click = 1-hop highlight.
+- `[ ]` **Tests**: `tests/test_relationships_v2.py` — semantic + temporal + domain rows created; project association persisted.
+
+**Acceptance:** Demo set shows internship screenshots clustered as a project/story; Connections renders an interactive graph, not only cards.
+
+---
+
+## Phase L: Honest UX ⬜ PENDING
+*Goal: No fake metrics, no split empty states.*
+
+- `[ ]` **Insights OCR card**: Bind to `insights.avg_confidence` (percent). If null, hide the card or show “No OCR confidence yet” — never `98.2%`.
+- `[ ]` **Insights week delta**: Use `recent_activity_count` or hide “+12% from last week”.
+- `[ ]` **Insights chart**: Plot last-7-day counts from the API, or remove the placeholder chart.
+- `[ ]` **Consistent empty states**: Search, Memories, Timeline, Connections, Insights all show the same “upload to get started” empty state when `total_memories == 0`.
+- `[ ]` **Delete dead data layer**: Remove `src/services/memoryService.ts` and `src/data/mockMemories.ts` if no live import remains.
+
+**Acceptance:** Insights with a failed/empty pipeline never shows 98.2%. Empty DB looks empty on every page.
+
+---
+
+## Phase M: Local OCR & Offline Path ⬜ PENDING
+*Goal: App runs without Gemini for OCR + embeddings. Still no model training.*
+
+- `[ ]` **Uncomment PaddleOCR** in `backend/requirements.txt` (optional extra / documented install). Keep it optional so Windows users without Paddle can still use LLM OCR.
+- `[ ]` **Three-tier OCR in pipeline**: PaddleOCR if installed → LLM vision OCR → empty string with a logged warning (never silent success with blank text).
+- `[ ]` **Honor `EMBEDDING_PROVIDER=local`**: Pipeline `_compute_embedding()` tries local SentenceTransformers first when set, then Gemini.
+- `[ ]` **Document in `DEVELOPER.md`**: How to install Paddle vs cloud-only path.
+
+**Acceptance:** With no `GEMINI_API_KEY`, upload still produces embeddings (local) and some OCR text (Paddle) or a clear stage error.
+
+---
+
+## Phase N: Docs Truth ⬜ PENDING
+*Goal: Docs match the running app.*
+
+- `[ ]` **Rewrite `docs/PRODUCT.md` / `docs/PROJECT.md`**: Remove “frontend only, no backend”. Point to `DEVELOPER.md`.
+- `[ ]` **Fix `docs/STATUS.md`**: Replace Review-1 frontend checklist with pointer to root `STATUS.md`.
+- `[ ]` **Fix root `STATUS.md`**: Remove contradictory unchecked Phase B items; mark Phase C as **partial** (column+HNSW yes, ANN search no); mark Phase E/H from Correction_Plan; add Phases J–N as pending.
+- `[ ]` **Keep `DEVELOPER.md` canonical**: Env vars, `alembic upgrade head`, `uvicorn app.main:app`, `npm run dev`, seed_demo, watch API.
+
+**Acceptance:** A new contributor can run the app from `DEVELOPER.md` without reading an 800-line vision doc.
+
+---
+
+## Suggested order (if you only have 2 weeks)
+
+| Week | Phases | Outcome |
+|---|---|---|
+| Week 1 | J + L | Search/chat are honest and scale; Insights stops lying |
+| Week 2 | K (graph tables + force UI) | Differentiator is visible |
+| After | I, M, N | Offline OCR, polish, docs |
+
+Skip auth, Redis/Celery, and OS screenshot hooks until J + K work on ~50–1,000 uploaded screenshots.

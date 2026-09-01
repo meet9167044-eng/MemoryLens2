@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { format, subDays, eachDayOfInterval, isSameDay } from "date-fns"
 import { api, Memory } from "@/services/api"
 import { Clock, Monitor, Calendar } from "lucide-react"
+import { EmptyLibrary } from "@/components/ui/EmptyLibrary"
 
 export default function Timeline() {
   const [timelineItems, setTimelineItems] = useState<Memory[]>([])
@@ -153,11 +154,7 @@ export default function Timeline() {
           ))}
         </div>
       ) : (
-        <div className="empty-state" style={{ height: '50vh' }}>
-          <div className="empty-icon"><Clock size={28} /></div>
-          <div className="empty-title">No timeline events</div>
-          <p>Capture some memories to build your timeline.</p>
-        </div>
+        <EmptyLibrary title="No timeline events" icon={<Clock size={28} />} />
       )}
     </div>
   )

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"
 import { api, Memory } from "@/services/api"
 import { Clock, Layers, Filter } from "lucide-react"
 import UploadModal from "@/components/upload/UploadModal"
+import { EmptyLibrary, UploadCta } from "@/components/ui/EmptyLibrary"
 
 // imageUrl from backend is relative (/api/v1/screenshots/…/image) — Vite proxy handles it
 
@@ -88,12 +89,10 @@ export default function Memories() {
           ))}
         </div>
       ) : (
-        <div className="empty-state">
-          <div className="empty-icon"><Layers size={28} /></div>
-          <div className="empty-title">No memories yet</div>
-          <p style={{ marginBottom: '20px' }}>Upload your first screenshot to get started.</p>
-          <button className="btn btn-primary" onClick={() => setShowUpload(true)}>Upload Screenshot</button>
-        </div>
+        <EmptyLibrary
+          icon={<Layers size={28} />}
+          action={<UploadCta onClick={() => setShowUpload(true)} />}
+        />
       )}
 
       {showUpload && (

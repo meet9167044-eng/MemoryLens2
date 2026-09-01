@@ -64,6 +64,7 @@ export interface InsightStats {
   top_tags: { name: string; count: number }[]
   top_entities: { name: string; count: number }[]
   app_breakdown: { name: string; count: number }[]
+  activity_by_day?: { date: string; count: number }[]
 }
 
 // ─── Search ─────────────────────────────────────────────────────────────────

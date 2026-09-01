@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { api, GraphNode, GraphEdge } from "@/services/api"
 import { Network, Link2, Monitor, Code, Tag, Cpu, BookOpen, FolderKanban, Clock, Globe } from "lucide-react"
+import { EmptyLibrary } from "@/components/ui/EmptyLibrary"
 
 type Story = {
   id: string
@@ -222,13 +223,7 @@ export default function Connections() {
                   </div>
                 </>
               ) : (
-                <div className="empty-state" style={{ flex: 1 }}>
-                  <div className="connection-icon" style={{ width: '60px', height: '60px' }}>
-                    <Link2 size={28} />
-                  </div>
-                  <div className="empty-title" style={{ marginTop: '16px' }}>No connections yet</div>
-                  <p>Capture more memories to discover the relationships between your topics and entities.</p>
-                </div>
+                <EmptyLibrary title="No connections yet" icon={<Link2 size={28} />} />
               )}
             </div>
           )}
