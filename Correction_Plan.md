@@ -69,12 +69,12 @@ This document breaks down the end-to-end implementation plan into actionable, st
 - `[x]` **Contextual Chat**: Passed previous search results into the chat context in `Chat.tsx` via local storage.
 - `[x]` **Search Facets**: Added clickable filter sidebars for Apps and Dates to `Search.tsx`.
 
-## Phase H: Demo & Polish
+## Phase H: Demo & Polish ✅ COMPLETE
 *Goal: Ensure the project is portfolio-ready.*
 
-- `[ ]` **Demo Data Script**: Write `scripts/seed_demo.py` to populate realistic fake memories.
-- `[ ]` **Demo Script**: Write a step-by-step walkthrough in `scripts/demo_flow.md`.
-- `[ ]` **README Overhaul**: Simplify `README.md` to a punchy pitch with quick start steps and an architecture diagram.
+- `[x]` **Demo Data Script**: Created `scripts/seed_demo.py` — seeds 50 realistic memories across 5 storylines (CUDA debugging, Google internship, GitHub code review, system setup, study session) with entities and relationships directly into PostgreSQL.
+- `[x]` **Demo Script**: Created `scripts/demo_flow.md` — 8-scene guided walkthrough (Search → Memory Detail → Knowledge Graph → Timeline → Chat → Insights) with talking points and Q&A.
+- `[x]` **README Overhaul**: Rewrote `README.md` to a punchy pitch with badges, architecture diagram, quick-start (5 commands), feature list, tech stack table, API reference, and demo section.
 
 ## Phase I: Extra Improvements
 *Goal: Additional robust enhancements.*

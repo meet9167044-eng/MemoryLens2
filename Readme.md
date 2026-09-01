@@ -1,801 +1,251 @@
+<div align="center">
 
+# 🔍 MemoryLens
 
-## 1. The problem
+### *Your screenshots remember everything. You just have to ask.*
 
-Think about your phone/laptop after a few years.
+**MemoryLens** is an AI-powered personal memory engine that turns screenshots into a searchable knowledge graph — letting you retrieve not just individual images, but the *people, projects, conversations, websites, and timelines* connected to them.
 
-You might have:
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://postgresql.org)
+[![pgvector](https://img.shields.io/badge/pgvector-HNSW-orange)](https://github.com/pgvector/pgvector)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-* 5,000+ screenshots
-* error messages
-* coding problems
-* Instagram posts
-* internship/job applications
-* receipts
-* maps
-* conversations
-* PDFs
-* lecture slides
-* websites
-* project ideas
-* important messages
-* random things you intended to revisit
-
-The problem isn't storing them.
-
-The problem is **retrieving them later**.
-
-You remember:
-
-> “There was a screenshot of a CUDA error I got while running PyTorch.”
-
-But you don't remember:
-
-* when you took it
-* the filename
-* which folder it's in
-* exactly what the error said
-* whether it was from VS Code, Terminal, Stack Overflow, etc.
-
-Normal image search struggles here.
-
-MemoryLens would let you simply ask:
-
-> **“Find the screenshot where I saw the Python error about CUDA.”**
-
-And retrieve it.
+</div>
 
 ---
 
-# 2. The basic architecture
+## What is MemoryLens?
 
-At the simplest level:
+> **"Find the CUDA error I got while training my ML model in January."**
 
-```text
-Screenshots
-     ↓
-OCR
-     ↓
-Text + visual understanding
-     ↓
-Embeddings
-     ↓
-Vector database
-     ↓
-Semantic Search
-     ↓
-Relevant screenshots
-```
+Normal image search fails here. You don't remember the filename, the folder, or the exact words. MemoryLens finds it anyway — and shows you everything connected to it.
 
-Suppose you upload this screenshot:
-
-```text
-RuntimeError: CUDA out of memory.
-Tried to allocate 2.00 GiB...
-```
-
-MemoryLens extracts the text using OCR.
-
-It might also identify:
-
-```text
-Programming language → Python
-Framework → PyTorch
-Technology → CUDA
-Error type → GPU memory
-Application → VS Code
-```
-
-Then it creates an embedding representing the meaning of the screenshot.
-
-So a search like:
-
-> “my GPU memory error from Python”
-
-can find it even though those exact words might not appear together in the screenshot.
+| Google Photos | MemoryLens |
+|---|---|
+| Find pictures | **Find the story behind your pictures** |
+| Keyword / object search | Semantic natural language search |
+| Isolated files | Knowledge graph of related memories |
+| Creation date only | Original capture time from EXIF |
+| No relationships | Semantic + temporal + domain + entity links |
 
 ---
 
-# 3. But semantic image search isn't the unique part
+## Quick Start
 
-This is where your idea becomes much more interesting.
+> ⚡ **5 commands to a running app**
 
-A normal system might do:
+```bash
+# 1. Set up the backend
+cd backend
+pip install -r requirements.txt
+cp .env.example .env    # then add your GROQ_API_KEY
 
-```text
-Query
- ↓
-Vector database
- ↓
-Screenshot #1847
+# 2. Initialize the database
+alembic upgrade head
+
+# 3. Start the backend
+uvicorn app.main:app --reload --port 8000
+
+# 4. Start the frontend (new terminal, project root)
+npm install && npm run dev
+
+# 5. Seed demo data (optional but recommended)
+python scripts/seed_demo.py
 ```
 
-MemoryLens should instead think:
-
-```text
-                     ┌── Person
-                     │
-                     ├── Project
-                     │
-Screenshot ──────────┼── Website
-                     │
-                     ├── Date
-                     │
-                     ├── Conversation
-                     │
-                     └── Document
-                            ↓
-                    Related screenshots
-```
-
-In other words:
-
-> **A screenshot isn't an isolated image. It's an event in your digital life.**
-
-That's the core product idea.
+Open **http://localhost:5173** → upload a screenshot → watch the magic.
 
 ---
 
-# 4. Example: internship application
+## How It Works
 
-Imagine in January you applied for an internship.
-
-Over several weeks, you might have:
-
-**Jan 3**
-
-* Screenshot of internship posting
-
-**Jan 4**
-
-* Screenshot of application portal
-
-**Jan 5**
-
-* Screenshot of resume feedback
-
-**Jan 8**
-
-* Screenshot of recruiter LinkedIn profile
-
-**Jan 10**
-
-* Screenshot of interview invitation
-
-**Jan 12**
-
-* Screenshot of interview preparation notes
-
-**Jan 15**
-
-* Screenshot of coding test
-
-**Jan 20**
-
-* Screenshot of rejection/offer email
-
-These screenshots are technically unrelated files.
-
-But semantically, they're one story:
-
-```text
-                  Internship Application
-                         │
-        ┌────────────────┼────────────────┐
-        ↓                ↓                ↓
-    Job posting       Resume          Recruiter
-        │                │                │
-        ↓                ↓                ↓
-   Application       Feedback        Interview
-                         │
-                         ↓
-                    Coding test
-                         │
-                         ↓
-                       Result
 ```
-
-So when you ask:
-
-> **“Show everything related to my internship application from January.”**
-
-MemoryLens could return the **whole chain**, not just one screenshot.
-
-That's significantly more powerful than image search.
-
----
-
-# 5. Think of it as a Personal Knowledge Graph
-
-The deeper technical concept behind MemoryLens is a **knowledge graph**.
-
-You can represent your digital life as entities and relationships.
-
-For example:
-
-```text
-Screenshot #1827
-       │
-       ├── mentions → NVIDIA
-       ├── mentions → CUDA
-       ├── mentions → PyTorch
-       ├── created → Jan 14
-       ├── appears_in → VS Code
-       ├── related_to → ML Project
-       └── similar_to → Screenshot #1842
-                              │
-                              └── related_to → Stack Overflow page
-```
-
-Another screenshot might contain:
-
-```text
-Screenshot #1842
-       │
-       ├── CUDA error
-       ├── PyTorch
-       └── GPU memory
-```
-
-The system can therefore connect them.
-
-This produces a graph like:
-
-```text
-             CUDA
-            /    \
-       PyTorch   GPU
-          |       |
-      Screenshot──Screenshot
-          |
-       ML Project
-          |
-      VS Code
-```
-
-Now the search isn't just:
-
-**“Which image is similar?”**
-
-It's:
-
-**“Which part of my digital history is relevant to this question?”**
-
----
-
-# 6. Where the metadata comes from
-
-MemoryLens can build relationships from multiple signals.
-
-### A. OCR
-
-Extract visible text:
-
-```text
-"Interview scheduled"
-"Python"
-"Google"
-"CUDA"
-"Application submitted"
-```
-
-### B. Computer vision
-
-Understand what's visually present:
-
-```text
-VS Code interface
-Terminal
-LinkedIn
-Gmail
-Chrome
-PDF
-GitHub
-```
-
-### C. Timestamp
-
-Every screenshot has a creation time.
-
-That gives you:
-
-```text
-Jan 12
-Jan 13
-Jan 15
-Jan 17
-```
-
-Temporal proximity becomes a useful relationship.
-
-### D. Application/source
-
-If possible, determine where the screenshot came from:
-
-```text
-Chrome
-VS Code
-WhatsApp
-Gmail
-Terminal
-```
-
-### E. Named entities
-
-Extract things such as:
-
-```text
-People
-Companies
-Projects
-Universities
-Technologies
-Locations
-URLs
-```
-
-### F. Semantic similarity
-
-Two screenshots can be related even if they don't share exact words.
-
----
-
-# 7. The search becomes much more natural
-
-Instead of forcing users to remember keywords, MemoryLens should accept **human questions**.
-
-For example:
-
-> “Find the Python error I got last month.”
-
-> “Show me screenshots related to my ML project.”
-
-> “What was that website where I found the internship?”
-
-> “Show everything related to my internship application.”
-
-> “Find the screenshot of the laptop I wanted to buy.”
-
-> “When did I first see this person?”
-
-> “Show screenshots related to CUDA from January.”
-
-> “Find the conversation where someone recommended LangChain.”
-
-This makes the product feel less like a file system and more like **talking to your own digital history**.
-
----
-
-# 8. A particularly cool feature: timeline reconstruction
-
-This could be one of the strongest features.
-
-Suppose the user asks:
-
-> **“What happened with my internship application?”**
-
-Instead of simply returning screenshots, MemoryLens could construct:
-
-```text
-JAN 3
-Found internship posting
-        ↓
-JAN 4
-Opened application portal
-        ↓
-JAN 6
-Updated resume
-        ↓
-JAN 9
-Submitted application
-        ↓
-JAN 14
-Recruiter contacted you
-        ↓
-JAN 17
-Interview scheduled
-        ↓
-JAN 21
-Completed interview
-```
-
-Each event can be backed by the actual screenshots.
-
-So MemoryLens becomes something like:
-
-> **Search + timeline + personal knowledge graph**
-
----
-
-# 9. Another powerful concept: "related to this"
-
-Imagine you open one screenshot.
-
-MemoryLens could show:
-
-### Related
-
-**Screenshot**
-
-> CUDA out-of-memory error
-
-**Related screenshots**
-
-* Previous CUDA installation attempt
-* PyTorch setup
-* NVIDIA driver page
-* Stack Overflow solution
-* Successful training run
-
-**Related entities**
-
-* PyTorch
-* CUDA
-* NVIDIA
-* ML Project
-
-**Related timeline**
-
-* First CUDA setup → Jan 8
-* Error → Jan 12
-* Fixed → Jan 13
-
-This is much more interesting than just showing similar pictures.
-
----
-
-# 10. Technical stack
-
-A reasonable MVP could look like:
-
-```text
-                ┌──────────────────┐
-                │ Screenshot Input │
-                └────────┬─────────┘
-                         ↓
-                ┌──────────────────┐
-                │ OCR / Vision AI  │
-                └────────┬─────────┘
-                         ↓
-              ┌──────────────────────┐
-              │ Metadata Extraction  │
-              │                      │
-              │ date                 │
-              │ app                  │
-              │ people               │
-              │ URLs                 │
-              │ projects             │
-              │ topics               │
-              └──────────┬───────────┘
-                         ↓
-              ┌──────────────────────┐
-              │ Embedding Generation │
-              └──────────┬───────────┘
-                         ↓
-              ┌──────────────────────┐
-              │ Vector Database      │
-              │ + Knowledge Graph    │
-              └──────────┬───────────┘
-                         ↓
-                   Search Engine
-                         ↓
-                    User Query
-                         ↓
-              Relevant memories
-```
-
-For a hackathon/MVP, you don't need to build everything from scratch.
-
-You could use:
-
-* OCR model/API
-* multimodal LLM for screenshot understanding
-* embedding model
-* vector DB
-* graph DB or relational tables for relationships
-* a simple web/mobile interface
-
----
-
-# 11. The hardest technical problem
-
-The hardest part isn't OCR.
-
-OCR is relatively straightforward.
-
-The difficult question is:
-
-> **How do we decide that two screenshots belong to the same "memory" or context?**
-
-For example:
-
-```text
-Screenshot A
-"Python CUDA error"
-
-Screenshot B
-"How to install NVIDIA drivers"
-
-Screenshot C
-"Internship application"
-
-Screenshot D
-"PyTorch model training"
-```
-
-A and B are probably related.
-
-A and D are probably related.
-
-C might be completely unrelated.
-
-So you need a **relationship engine**.
-
-You could score relationships using:
-
-```text
-Relationship Score =
-    semantic similarity
-  + entity overlap
-  + temporal proximity
-  + application similarity
-  + URL/domain similarity
-  + project similarity
-  + conversation similarity
-```
-
-Then construct clusters:
-
-```text
-              ML Project
-             /    |     \
-          CUDA  PyTorch  GPU
-           |      |       |
-        screenshot cluster
-```
-
-This is where the AI/ML aspect becomes genuinely interesting.
-
----
-
-# 12. You could make the graph dynamic
-
-Instead of permanently assigning:
-
-> Screenshot → Project A
-
-the system could maintain probabilities:
-
-```text
-Screenshot #1827
-
-ML Project       0.91
-CUDA debugging   0.87
-PyTorch          0.82
-Internship       0.04
-```
-
-As more screenshots appear, relationships become stronger.
-
-For example:
-
-```text
-Screenshot 1
-      ↓
-CUDA
-
-Screenshot 2
-      ↓
-PyTorch
-
-Screenshot 3
-      ↓
-same GitHub repository
-
-Screenshot 4
-      ↓
-same project name
-```
-
-The system gradually realizes:
-
-> These probably belong to the same project.
-
----
-
-# 13. The UI could be really compelling
-
-Imagine the home screen:
-
-```text
+📸 Upload Screenshot
+        │
+        ▼
+┌────────────────────────────────────────────────────────┐
+│                   Async Pipeline                        │
+│  ┌─────────────┐  ┌─────────┐  ┌────────────────────┐ │
+│  │ Preprocessing│→ │   OCR   │→ │   AI Extraction    │ │
+│  │ EXIF → time │  │ PaddleOCR│  │ Llama 3.2 Vision   │ │
+│  │             │  │ / LLM   │  │ title, entities,   │ │
+│  └─────────────┘  └─────────┘  │ tags, app, domain  │ │
+│                                 └────────────────────┘ │
+│  ┌──────────────────┐  ┌──────────────────────────┐   │
+│  │    Embedding      │→ │    Relationship Engine    │   │
+│  │ SentenceTransform │  │ semantic + temporal +     │   │
+│  │ ers (local 768d)  │  │ domain + shared-entity   │   │
+│  └──────────────────┘  └──────────────────────────┘   │
+└────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────┐
+│   PostgreSQL + pgvector       │
+│   ├── screenshots             │
+│   ├── memories + embeddings   │
+│   ├── entities (normalized)   │
+│   ├── relationships (4 types) │
+│   └── stories (auto-grouped)  │
+└───────────────────────────────┘
+        │
+        ▼
 ┌──────────────────────────────────────────┐
-│ 🔍 Search your memories...               │
-│                                          │
-│ "Find my CUDA error from January"        │
+│              React Frontend              │
+│  Search  │  Graph  │  Chat  │  Timeline  │
 └──────────────────────────────────────────┘
-
-
-RECENT MEMORIES
-
-┌─────────┐ ┌─────────┐ ┌─────────┐
-│ image   │ │ image   │ │ image   │
-│         │ │         │ │         │
-│ CUDA    │ │ Resume  │ │ GitHub  │
-└─────────┘ └─────────┘ └─────────┘
 ```
-
-Then search:
-
-> **“Everything related to my internship application.”**
-
-Result:
-
-```text
-INTERNSHIP APPLICATION
-
-January 3
-  Job posting
-
-January 5
-  Resume
-
-January 8
-  Application portal
-
-January 12
-  Recruiter profile
-
-January 15
-  Interview invitation
-
-January 19
-  Interview preparation
-```
-
-And clicking any item opens the original screenshot.
 
 ---
 
-# 14. The killer feature I'd build
+## Features
 
-I wouldn't market it as:
+### 🔍 Semantic Search
+- **Hybrid scoring**: 60% pgvector cosine (768-dim HNSW index) + 40% PostgreSQL full-text
+- **Natural language queries**: "CUDA error in January" or "internship application screenshots"
+- **Faceted filters**: filter by app, date range, content type
 
-> **"AI-powered screenshot search."**
+### 🕸️ Knowledge Graph
+- **4 relationship types**: Semantic (embedding similarity ≥ 0.65) · Temporal (within 2h window) · Domain (same website) · Shared entity
+- **Interactive force-directed graph** — click any node to explore its neighborhood
+- **Auto-grouped Stories** — temporal+semantic clusters of related screenshots
+- **Project detection** — heuristic clustering by entity co-occurrence
 
-That's too ordinary.
+### 💬 Contextual RAG Chat
+- Ask questions about your memories in plain English
+- Answers cite the actual screenshots used as context
+- Follow-up queries use previous results as seeds
 
-I'd position it as:
+### 📅 Timeline
+- 12-week GitHub-style activity heatmap
+- Click any day to see all screenshots from that session
+- Timestamps from EXIF metadata (not upload time)
 
-> **“Search your digital memory.”**
-
-Or:
-
-> **“Your screenshots remember everything.”**
-
-The key distinction is:
-
-### Google Photos
-
-> Find pictures.
-
-### MemoryLens
-
-> **Find the story behind your pictures.**
-
-That's the interesting part.
-
----
-
-# 15. A strong MVP
-
-For a hackathon, don't try to index someone's entire life immediately.
-
-Build this:
-
-### Step 1 — Upload screenshots
-
-User uploads 100–500 screenshots.
-
-### Step 2 — Understand them
-
-For each screenshot:
-
-```text
-OCR
-+
-image understanding
-+
-metadata
-+
-embedding
-```
-
-### Step 3 — Search
-
-User types:
-
-> “CUDA error”
-
-Return relevant screenshots.
-
-### Step 4 — Add relationships
-
-Show:
-
-```text
-Related screenshots
-Related websites
-Related projects
-Related dates
-```
-
-### Step 5 — Timeline
-
-Allow:
-
-> “Show everything related to CUDA.”
-
-Then display the screenshots chronologically.
-
-### Step 6 — Natural-language investigation
-
-Allow:
-
-> “What was I doing when I encountered this error?”
-
-That's when the demo starts feeling magical.
+### ⚙️ Auto-Ingestion
+- Folder watcher daemon — drop screenshots in a folder, they're automatically ingested
+- Bulk import via `/api/v1/ingest/bulk`
+- SHA-256 deduplication — never processes the same file twice
 
 ---
 
-# 16. The demo I'd present
+## Tech Stack
 
-A very strong demo would be:
-
-**You have 500 random screenshots.**
-
-You tell the judges:
-
-> “These are screenshots from the last few months. I don't remember where anything is.”
-
-Then type:
-
-> **Find the CUDA error I had while working on my ML project.**
-
-MemoryLens returns the screenshot.
-
-Then:
-
-> **What was I doing around that time?**
-
-It shows:
-
-```text
-CUDA installation
-      ↓
-PyTorch setup
-      ↓
-GPU memory error
-      ↓
-Stack Overflow solution
-      ↓
-Successful training
-```
-
-Then:
-
-> **Show everything connected to this project.**
-
-And the graph expands.
-
-That demonstrates that you're not simply doing OCR + vector search.
-
-You're building a **personal memory graph**.
+| Layer | Technology |
+|---|---|
+| **Backend** | FastAPI 0.109 + Python 3.11 |
+| **Database** | PostgreSQL 16 + pgvector (HNSW index) |
+| **Embeddings** | SentenceTransformers `all-mpnet-base-v2` (local, offline) |
+| **Vision LLM** | Groq `llama-3.2-11b-vision-preview` (free tier) |
+| **Chat LLM** | Groq `llama-3.1-8b-instant` |
+| **Migrations** | Alembic |
+| **Frontend** | React 18 + TypeScript + Vite |
+| **Graph UI** | react-force-graph |
+| **Queue** | In-process `PriorityQueue` (no Redis needed) |
 
 ---
 
-## The one-sentence definition
+## Environment Variables
 
-If you need to explain the project to someone quickly:
+Create `backend/.env` (see `backend/.env.example`):
 
-> **MemoryLens is an AI-powered personal memory engine that turns screenshots into a searchable knowledge graph, allowing users to retrieve not just individual screenshots but the people, projects, conversations, websites, documents, and timelines connected to them.**
+```env
+DATABASE_URL=postgresql+psycopg2://postgres:password@localhost:5432/memorylens_db
+LLM_PROVIDER=groq
+GROQ_API_KEY=gsk_...          # Free at console.groq.com
+GROQ_VISION_MODEL=llama-3.2-11b-vision-preview
+GROQ_CHAT_MODEL=llama-3.1-8b-instant
+EMBEDDING_PROVIDER=local      # No API key needed
+```
 
+---
+
+## Project Structure
+
+```
+MemoryLens/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/          # FastAPI route handlers
+│   │   ├── core/            # Local embedder, config
+│   │   ├── jobs/            # Async pipeline + queue
+│   │   ├── models/          # SQLAlchemy ORM models
+│   │   ├── processing/      # OCR, relationship engine
+│   │   ├── services/        # LLM extractor, search, storage
+│   │   └── schemas/         # Pydantic request/response schemas
+│   ├── migrations/          # Alembic migration scripts
+│   └── tests/               # pytest test suite
+├── src/                     # React + TypeScript frontend
+│   ├── pages/               # Search, Graph, Chat, Timeline, Insights
+│   └── components/          # Shared UI components
+├── scripts/
+│   ├── seed_demo.py         # Populate 50 realistic demo memories
+│   └── demo_flow.md         # Step-by-step demo walkthrough script
+├── DEVELOPER.md             # Full local setup guide
+└── README.md
+```
+
+---
+
+## Demo
+
+Run the demo seeder to get 50 realistic memories across 5 storylines:
+
+```bash
+cd backend
+python ../scripts/seed_demo.py
+```
+
+**Storylines included:**
+- 🧠 **ML / CUDA Debugging** — 12 memories across VS Code, Terminal, Stack Overflow
+- 💼 **Google Internship Application** — 12 memories across LinkedIn, Gmail, LeetCode
+- 🐙 **GitHub Code Review** — 8 memories of a PR review cycle
+- ⚙️ **System Setup** — 10 memories of the full project setup
+- 📚 **Study Session** — 8 memories of deep learning research
+
+Then follow the [`scripts/demo_flow.md`](scripts/demo_flow.md) walkthrough for a 10-minute guided demo.
+
+---
+
+## API Reference
+
+```
+POST   /api/v1/ingest              Upload a screenshot
+POST   /api/v1/ingest/bulk         Bulk import from folder path
+GET    /api/v1/memories            List all memories (paginated)
+GET    /api/v1/memories/{id}       Get single memory
+GET    /api/v1/memories/{id}/related  Related screenshots
+GET    /api/v1/search?q=...        Hybrid semantic search
+GET    /api/v1/connections         Knowledge graph edges
+POST   /api/v1/chat                RAG chat
+GET    /api/v1/insights            Aggregated stats
+POST   /api/v1/watch/start         Start folder watcher
+```
+
+Interactive docs: **http://localhost:8000/docs**
+
+---
+
+## Running Tests
+
+```bash
+cd backend
+pytest tests/ -v
+```
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+<div align="center">
+
+**Built with ❤️ by [Meet Jain](https://github.com/meet9167044)**
+
+*"A screenshot isn't an isolated image. It's an event in your digital life."*
+
+</div>
