@@ -1,4 +1,4 @@
-import React, { ReactNode } from "react";
+import { ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "./Button";
 
