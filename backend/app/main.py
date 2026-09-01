@@ -35,6 +35,16 @@ from app.jobs.queue import pipeline_queue
 async def lifespan(app: FastAPI):
     """Start pipeline worker pool on startup, shut down gracefully."""
     pipeline_queue.start()
+    
+    # Preload the local embedding model so the first search doesn't timeout
+    try:
+        import asyncio
+        from app.core.local_embedder import _load
+        await asyncio.to_thread(_load)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to preload embedder: {e}")
+        
     yield
     pipeline_queue.stop(timeout=10.0)
 

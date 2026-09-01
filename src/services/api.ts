@@ -1,4 +1,4 @@
-﻿// Absolute URL — backend CORS allows http://localhost:5173 so no proxy is needed.
+// Absolute URL — backend CORS allows http://localhost:5173 so no proxy is needed.
 // If you move to production, swap this for an env variable.
 const API_BASE = "http://localhost:8000/api/v1"
 
@@ -103,6 +103,12 @@ export interface SearchResponse {
   limit: number
   offset: number
   results: SearchResult[]
+  nlp_applied?: boolean
+  facets?: {
+    apps?: Record<string, number>
+    dates?: Record<string, number>
+    types?: Record<string, number>
+  }
 }
 
 // ─── Ingest ─────────────────────────────────────────────────────────────────
@@ -158,10 +164,28 @@ export interface GraphEdge {
   data: Record<string, any>
 }
 
+export interface ConnectionsStory {
+  id: string
+  title: string
+  memory_ids: string[]
+  start_time: string | null
+  end_time: string | null
+  tags: string[]
+  memory_count: number
+}
+
+export interface ConnectionsProject {
+  name: string
+  memory_ids: string[]
+  memory_count: number
+}
+
 export interface ConnectionsResponse {
   nodes: GraphNode[]
   edges: GraphEdge[]
   total_memories: number
+  stories?: ConnectionsStory[]
+  projects?: ConnectionsProject[]
 }
 
 // ─── Related Memories (GET /memories/{id}/related) ───────────────────────────
@@ -284,6 +308,6 @@ export const api = {
   screenshotUrl: (id: string) => `http://localhost:8000/api/v1/screenshots/${id}/image`,
 
   // Chat
-  chat: (message: string, session_id?: string) =>
-    post<ChatResponse>("/chat", { message, session_id })
+  chat: (message: string, context_memory_ids?: string[]) =>
+    post<ChatResponse>("/chat", { message, context_memory_ids })
 }

@@ -23,16 +23,16 @@ class EntityResult(BaseModel):
     """A named entity extracted from a memory."""
     id: str
     name: str
-    type: Literal[
-        "technology", "framework", "company", "person",
-        "project", "topic", "tool", "other"
-    ]
+    # Covers all EntityType enum values + legacy frontend types
+    # Maps: organization→company, file_path/url/date/location/code_symbol→other
+    type: str
 
 
 class SourceResult(BaseModel):
     """Where the memory was captured."""
     app: str
-    type: Literal["desktop", "browser", "terminal", "document", "other"]
+    # Normalized to frontend-expected values; raw content_type mapped via _normalize_content_type()
+    type: str
 
 
 # ---------------------------------------------------------------------------

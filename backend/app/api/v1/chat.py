@@ -72,14 +72,13 @@ def _embed_query(q: str) -> Optional[list]:
         from app.config import settings
         if not settings.GEMINI_API_KEY:
             return None
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        result = genai.embed_content(
-            model=f"models/{settings.EMBEDDING_MODEL}",
-            content=q,
-            task_type="RETRIEVAL_QUERY",
+        from google import genai
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        result = client.models.embed_content(
+            model=settings.EMBEDDING_MODEL,
+            contents=q,
         )
-        return result["embedding"]
+        return result.embeddings[0].values
     except Exception as exc:
         logger.warning("Query embedding failed: %s", exc)
         return None
@@ -140,7 +139,9 @@ def _build_context(memories: List[Memory]) -> str:
     """Build the memory context block to inject into the LLM prompt."""
     parts = []
     for i, m in enumerate(memories, 1):
-        ts = m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else "unknown time"
+        # Phase B: prefer captured_at (real screenshot time) over created_at (upload time)
+        real_ts = m.captured_at or m.created_at
+        ts = real_ts.strftime("%Y-%m-%d %H:%M") if real_ts else "unknown time"
         parts.append(
             f"[Memory {i}] — {ts}\n"
             f"Title: {m.title or 'Untitled'}\n"
@@ -156,7 +157,8 @@ def _extract_citations(memories: List[Memory]) -> List[Citation]:
         Citation(
             memory_id=str(m.id),
             title=m.title or "Untitled",
-            timestamp=m.created_at.isoformat() if m.created_at else "",
+            # Phase B: prefer captured_at (real screenshot time) over created_at (upload time)
+            timestamp=(m.captured_at or m.created_at).isoformat() if (m.captured_at or m.created_at) else "",
             snippet=(m.summary or m.raw_ocr_text or "")[:120],
         )
         for m in memories
@@ -188,30 +190,19 @@ def _call_gemini_chat(question: str, context: str) -> tuple[str, str]:
     """Call Gemini to generate a grounded answer. Returns (answer, model_used)."""
     try:
         from app.config import settings
-        import google.generativeai as genai
-        from google.generativeai.types import HarmCategory, HarmBlockThreshold
-
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-
-        safety = {
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        }
-
+        from google import genai
+        
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
         prompt = _RAG_PROMPT_TEMPLATE.format(context=context, question=question)
 
-        for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+        # Assuming gemini-3.6-flash from user's test, falling back to gemini-1.5-flash
+        for model_name in ["gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
-                model = genai.GenerativeModel(model_name)
-                resp = model.generate_content(
-                    prompt,
-                    safety_settings=safety,
-                    generation_config={"temperature": 0.2, "max_output_tokens": 1024},
-                    request_options={"timeout": 30},
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
                 )
-                return resp.text or "I couldn't generate a response.", model_name
+                return response.text or "I couldn't generate a response.", model_name
             except Exception:
                 continue
 

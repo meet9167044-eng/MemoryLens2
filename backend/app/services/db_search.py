@@ -45,16 +45,17 @@ def _embed_query(q: str) -> Optional[list]:
     try:
         from app.config import settings
         if settings.GEMINI_API_KEY:
-            import google.generativeai as genai
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            result = genai.embed_content(
-                model=f"models/{settings.EMBEDDING_MODEL}",
-                content=q,
-                task_type="RETRIEVAL_QUERY",
+            from google import genai
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            # Embed using the new SDK
+            result = client.models.embed_content(
+                model=settings.EMBEDDING_MODEL,
+                contents=q,
             )
-            return result["embedding"]
-    except Exception:
-        pass
+            return result.embeddings[0].values
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Gemini embedding failed: %s", exc)
     
     from app.core.local_embedder import embed_local
     return embed_local(q)
@@ -103,10 +104,45 @@ def _make_snippet(q: str, memory: Memory, max_chars: int = 200) -> str:
     return ocr[:max_chars]
 
 
+_ENTITY_TYPE_MAP = {
+    "organization": "company",
+    "technology": "technology",
+    "person": "person",
+    "file_path": "other",
+    "url": "other",
+    "date": "other",
+    "location": "other",
+    "code_symbol": "other",
+    "other": "other",
+}
+
+
+def _normalize_entity_type(raw: str) -> str:
+    return _ENTITY_TYPE_MAP.get(raw, "other")
+
+
+_CONTENT_TYPE_MAP = {
+    "browser": "browser",
+    "terminal": "terminal",
+    "document": "document",
+    "desktop": "desktop",
+    "code": "desktop",     # code editor = desktop app
+    "error": "terminal",  # errors usually from terminal/code
+    "other": "other",
+}
+
+def _normalize_content_type(raw: str | None) -> str:
+    return _CONTENT_TYPE_MAP.get(raw or "other", "other")
+
+
 def _to_search_result(memory: Memory, score: float, match_type: str, q: str) -> SearchResult:
     """Convert a Memory ORM row to a SearchResult Pydantic model."""
     entities = [
-        EntityResult(id=str(e.id), name=e.name, type=e.entity_type.value)
+        EntityResult(
+            id=str(e.id),
+            name=e.name,
+            type=_normalize_entity_type(e.entity_type.value),
+        )
         for e in (memory.entities or [])
     ]
     screenshot_id = str(memory.screenshot_id) if memory.screenshot_id else ""
@@ -124,7 +160,7 @@ def _to_search_result(memory: Memory, score: float, match_type: str, q: str) -> 
     return SearchResult(
         id=str(memory.id),
         timestamp=timestamp,
-        source=SourceResult(app=app_name, type=memory.content_type or "other"),
+        source=SourceResult(app=app_name, type=_normalize_content_type(memory.content_type)),
         title=memory.title or "Untitled",
         summary=memory.summary or "",
         ocr_snippet=_make_snippet(q, memory),
@@ -215,8 +251,11 @@ class DBSearchService:
             # or we could do a strict tag filter: Memory.tags.cast(String).ilike('%"tag"%')
 
         if query_vec:
+            from sqlalchemy import func as sqlfunc
+            # COALESCE handles rows where embedding IS NULL — avoids float(None) crash
             distance_expr = Memory.embedding.cosine_distance(query_vec)
-            sem_score_expr = (1.0 - distance_expr).label("sem_score")
+            coalesced = sqlfunc.coalesce(distance_expr, 1.0)  # NULL → distance=1.0 (= score 0.0)
+            sem_score_expr = (1.0 - coalesced).label("sem_score")
             base = base.add_columns(sem_score_expr)
         else:
             from sqlalchemy import literal
@@ -243,7 +282,12 @@ class DBSearchService:
 
         for row in results_from_db:
             mem = row[0]
-            sem = float(row[1]) if row[1] is not None else 0.0
+            try:
+                sem = float(row[1]) if row[1] is not None else 0.0
+            except (TypeError, ValueError):
+                sem = 0.0
+            # Clamp to [0.0, 1.0] to handle floating-point drift
+            sem = max(0.0, min(1.0, sem))
             kw = _keyword_hit(q, mem)
 
             # Hybrid score

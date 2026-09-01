@@ -34,14 +34,18 @@ router = APIRouter()
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _memory_node(m: Memory) -> Dict[str, Any]:
+    # Phase B: prefer captured_at (real screenshot time) over created_at (upload time)
+    real_ts = m.captured_at or m.created_at
     return {
         "id": f"mem_{m.id}",
         "type": "memory",
         "label": (m.title or "Untitled")[:50],
         "data": {
             "memoryId": str(m.id),
-            "timestamp": m.created_at.isoformat() if m.created_at else "",
+            "timestamp": real_ts.isoformat() if real_ts else "",
             "contentType": m.content_type or "other",
+            "app": m.app_detected or "Unknown",
+            "domain": m.domain or "",
             "tags": m.tags or [],
         },
     }

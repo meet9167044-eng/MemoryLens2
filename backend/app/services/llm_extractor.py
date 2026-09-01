@@ -136,39 +136,28 @@ def _stub_result(filename: str) -> ExtractionResult:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _extract_gemini(image_bytes: bytes, filename: str) -> ExtractionResult:
-    """Call Google Gemini 1.5/2.0 Flash with the image and return structured output."""
+    """Call Google Gemini with the image and return structured output."""
     try:
-        import google.generativeai as genai
-        from google.generativeai.types import HarmCategory, HarmBlockThreshold
+        from google import genai
     except ImportError:
-        logger.warning("google-generativeai not installed — using stub.")
+        logger.warning("google.genai not installed — using stub.")
         return _stub_result(filename)
 
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-    # Try 2.0 Flash first, fallback to 1.5 Flash
-    model_names = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"]
+    # Use the new gemini models
+    model_names = ["gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
 
     import PIL.Image
     import io as _io
     pil_img = PIL.Image.open(_io.BytesIO(image_bytes))
 
-    safety = {
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-    }
-
     last_exc = None
     for model_name in model_names:
         try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(
-                [_SYSTEM_PROMPT, pil_img],
-                safety_settings=safety,
-                generation_config={"temperature": 0.1, "max_output_tokens": 2048},
-                request_options={"timeout": 30},
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[_SYSTEM_PROMPT, pil_img],
             )
             raw = response.text or ""
             return _parse_llm_json(raw, filename)

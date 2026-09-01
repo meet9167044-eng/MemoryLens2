@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { api, GraphNode, GraphEdge } from "@/services/api"
 import { Network, Link2, Monitor, Code, Tag, Cpu, BookOpen, FolderKanban, Clock, Globe } from "lucide-react"
 
@@ -253,7 +253,9 @@ export default function Connections() {
                             )}
                           </div>
                         </div>
-                        <span className="badge badge-outline">{story.memory_count} screenshots</span>
+                        <span className="badge badge-outline">
+                          {story.memory_count} {story.memory_count === 1 ? 'screenshot' : 'screenshots'}
+                        </span>
                       </div>
                       {story.tags.length > 0 && (
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
