@@ -152,7 +152,8 @@ export interface ChatResponse {
 
 export interface GraphNode {
   id: string
-  type: "memory" | "entity"
+  // Fix 5.1: backend returns 5 node types, not just 2
+  type: "memory" | "entity" | "project" | "story" | "domain"
   /** The display name — use `label`, NOT `name` (backend field is `label`) */
   label: string
   data: Record<string, any>
@@ -311,5 +312,25 @@ export const api = {
 
   // Chat
   chat: (message: string, context_memory_ids?: string[]) =>
-    post<ChatResponse>("/chat", { message, context_memory_ids })
+    post<ChatResponse>("/chat", { message, context_memory_ids }),
+
+  // Fix 2.2: Delete a memory and its image file
+  deleteMemory: async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_BASE}/memories/${id}`, { method: "DELETE" })
+      return res.ok
+    } catch (e) {
+      console.error("deleteMemory failed:", e)
+      return false
+    }
+  },
+
+  // Fix 3.2: Bulk upload multiple files in a single request to /ingest/bulk
+  bulkUpload: async (files: File[]): Promise<{ screenshot_ids: string[] }> => {
+    const form = new FormData()
+    files.forEach(f => form.append("files", f))
+    const res = await fetch(`${API_BASE}/ingest/bulk`, { method: "POST", body: form })
+    if (!res.ok) throw new Error(`Bulk upload failed: HTTP ${res.status}`)
+    return await res.json()
+  },
 }

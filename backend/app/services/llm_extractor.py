@@ -145,8 +145,8 @@ def _extract_gemini(image_bytes: bytes, filename: str) -> ExtractionResult:
 
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-    # Use the new gemini models
-    model_names = ["gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+    # Fix 5.2: removed "gemini-3.6-flash" (doesn't exist) — start with valid models
+    model_names = ["gemini-2.0-flash", "gemini-1.5-flash"]
 
     import PIL.Image
     import io as _io

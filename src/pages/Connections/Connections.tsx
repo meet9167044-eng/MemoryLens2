@@ -195,11 +195,28 @@ export default function Connections() {
                         if (type === 'temporal') return '#F59E0B60'
                         return '#D1D5DB'
                       }}
-                      linkWidth={(link: any) => link.data?.score ? Math.max(1, link.data.score * 3) : 1}
+                       linkWidth={(link: any) => link.data?.score ? Math.max(1, link.data.score * 3) : 1}
                       linkDirectionalParticles={2}
                       linkDirectionalParticleSpeed={(d: any) => d.data?.score ? d.data.score * 0.01 : 0.005}
                       d3VelocityDecay={0.3}
                       onEngineStop={() => fgRef.current?.zoomToFit(400, 50)}
+                      // Fix 4.5: clickable nodes
+                      onNodeClick={(node: any) => {
+                        if (node.type === 'memory' && node.data?.memoryId) {
+                          window.location.href = `/memories/${node.data.memoryId}`
+                        } else if (node.type === 'story') {
+                          setActiveTab('stories')
+                        } else if (node.type === 'project') {
+                          setActiveTab('projects')
+                        }
+                      }}
+                      nodeCanvasObjectMode={() => 'after'}
+                      nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D) => {
+                        // Show pointer cursor hint via tooltip label on hover
+                        if (node.type === 'memory' || node.type === 'story' || node.type === 'project') {
+                          ctx.canvas.style.cursor = 'pointer'
+                        }
+                      }}
                     />
                   </div>
                 </>

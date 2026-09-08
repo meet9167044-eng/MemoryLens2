@@ -1,10 +1,14 @@
 """
 Phase 9 - Memories API Router
 Exposes:
-  GET  /api/v1/memories/{id}/related  — returns related memories
-  POST /api/v1/memories/{id}/compute-relationships  — trigger relationship engine
+  GET    /api/v1/memories              — list memories
+  GET    /api/v1/memories/{id}         — single memory detail
+  GET    /api/v1/memories/{id}/related — related memories
+  POST   /api/v1/memories/{id}/compute-relationships — trigger relationship engine
+  DELETE /api/v1/memories/{id}         — delete memory + image file (Fix 2.1)
 """
 from __future__ import annotations
+import os as _os
 
 from uuid import UUID
 
@@ -187,3 +191,41 @@ def trigger_compute_relationships(
         "relationships_computed": len(rels),
         "status": "ok",
     }
+
+
+# ── Fix 2.1: Delete memory + screenshot file ────────────────────────────────
+
+@router.delete(
+    "/{memory_id}",
+    status_code=204,
+    summary="Delete a memory and its screenshot image",
+    description=(
+        "Permanently deletes the Memory record, its Screenshot record, "
+        "and the image file from disk. This action is irreversible."
+    ),
+)
+def delete_memory(
+    memory_id: UUID,
+    db: Session = Depends(get_db),
+):
+    memory = db.query(Memory).filter(Memory.id == memory_id).first()
+    if not memory:
+        raise HTTPException(status_code=404, detail="Memory not found")
+
+    # Delete the image file from disk before removing DB records
+    screenshot = memory.screenshot
+    if screenshot and screenshot.file_path:
+        try:
+            if _os.path.exists(screenshot.file_path):
+                _os.remove(screenshot.file_path)
+        except OSError as exc:
+            # Log but don't block deletion if file removal fails
+            import logging
+            logging.getLogger(__name__).warning(
+                "Could not remove image file %s: %s", screenshot.file_path, exc
+            )
+
+    # Cascading delete handles entities, jobs, relationships via FK constraints
+    db.delete(memory)
+    db.commit()
+    # 204 No Content — return nothing

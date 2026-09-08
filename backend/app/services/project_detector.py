@@ -7,8 +7,8 @@ tags, domain patterns, and technology entity overlap.
 Heuristics (priority order):
   1. Tag hints: project-*, hackathon, internship, devjam, build-*
   2. Domain hint: GitHub/GitLab repo slug
-  3. Technology entity cluster fallback
-"""
+  3. Auto fallback: app_detected name  (Fix 1.3)
+  4. Auto fallback: root domain name   (Fix 1.3)"""
 
 from __future__ import annotations
 
@@ -52,13 +52,43 @@ def _extract_project_hint(memory: Memory) -> Optional[str]:
     return None
 
 
+# ── Fix 1.3: Auto-detect project from app or domain when tags give no hint ──
+
+# Apps that are too generic to be useful project names
+_GENERIC_APPS = frozenset({
+    "unknown", "other", "", "chrome", "firefox", "safari",
+    "edge", "browser", "system", "desktop",
+})
+
+
+def _auto_project_from_app(memory: Memory) -> Optional[str]:
+    """
+    Fix 1.3 fallback: create a project named after the detected app or domain.
+    Covers the common case where the LLM generates generic tags (code, python,
+    debugging) that don't match any of the narrow _PROJECT_TAG_PREFIXES.
+    """
+    app = (memory.app_detected or "").strip()
+    if app and app.lower() not in _GENERIC_APPS:
+        return app.title()  # e.g. "VS Code", "Cursor", "Figma"
+
+    domain = (memory.domain or "").strip().lower()
+    if domain and domain not in _GENERIC_APPS:
+        # Use root domain: "github.com" → "Github", "docs.google.com" → "Docs Google"
+        root = domain.split(".")[0]
+        if root and root not in ("www", "app", "api", ""):
+            return root.replace("-", " ").title()
+
+    return None
+
+
 def detect_projects_for_memory(db: Session, memory_id: UUID) -> Optional[str]:
     """Return a project name hint for a single Memory, and persist it to the DB."""
     memory: Optional[Memory] = db.get(Memory, memory_id)
     if not memory:
         return None
         
-    hint = _extract_project_hint(memory)
+    # Fix 1.3: try specific tag/domain hints first, then fall back to app/domain auto-detect
+    hint = _extract_project_hint(memory) or _auto_project_from_app(memory)
             
     if hint:
         # Create or fetch project

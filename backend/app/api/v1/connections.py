@@ -195,7 +195,34 @@ def _synthetic_demo_graph() -> Dict[str, Any]:
                     "data": {"score": len(shared) / max(len(mem.get("tags", [1])), 1), "relType": "shared_tag"},
                 })
 
-    return {"nodes": nodes, "edges": edges, "total_memories": len(SYNTHETIC_MEMORIES)}
+    # Fix 1.4: include stories and projects keys so the frontend tabs
+    # receive [] instead of undefined — preventing "always empty" state.
+    demo_story = {
+        "id": "story_1",
+        "title": "Demo Session",
+        "memory_ids": [f"mem_{m['id']}" for m in SYNTHETIC_MEMORIES[:15]],
+        "start_time": SYNTHETIC_MEMORIES[0].get("timestamp") if SYNTHETIC_MEMORIES else None,
+        "end_time": SYNTHETIC_MEMORIES[14].get("timestamp") if len(SYNTHETIC_MEMORIES) >= 15 else None,
+        "tags": list({t for m in SYNTHETIC_MEMORIES[:15] for t in m.get("tags", [])})[:6],
+        "memory_count": min(15, len(SYNTHETIC_MEMORIES)),
+    }
+    demo_project = {
+        "name": "Internship Project",
+        "memory_ids": [
+            f"mem_{m['id']}" for m in SYNTHETIC_MEMORIES[:15]
+            if "internship" in m.get("tags", [])
+        ],
+        "memory_count": sum(
+            1 for m in SYNTHETIC_MEMORIES[:15] if "internship" in m.get("tags", [])
+        ),
+    }
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "total_memories": len(SYNTHETIC_MEMORIES),
+        "stories": [demo_story],
+        "projects": [demo_project] if demo_project["memory_count"] > 0 else [],
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -283,7 +310,8 @@ def get_connections(
             "memory_ids": [str(m.id) for m in s.memories],
             "start_time": s.start_time.isoformat() if s.start_time else None,
             "end_time": s.end_time.isoformat() if s.end_time else None,
-            "tags": [],
+            # Fix 5.3: derive tags from related memories instead of hardcoding []
+            "tags": list({tag for m in s.memories for tag in (m.tags or [])})[:6],
             "memory_count": len(s.memories),
         })
 

@@ -1,8 +1,8 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { format } from "date-fns"
 import { api, Memory, RelatedMemoryFull } from "@/services/api"
-import { ArrowLeft, Clock, Monitor, Tag, AlignLeft, Layers, Network } from "lucide-react"
+import { ArrowLeft, Clock, Monitor, Tag, AlignLeft, Layers, Network, Trash2 } from "lucide-react"
 
 export default function MemoryDetail() {
   const { id } = useParams<{ id: string }>()
@@ -10,6 +10,7 @@ export default function MemoryDetail() {
   const [memory, setMemory] = useState<Memory | null>(null)
   const [related, setRelated] = useState<RelatedMemoryFull[]>([])
   const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -23,6 +24,16 @@ export default function MemoryDetail() {
       setLoading(false)
     })
   }, [id])
+
+  // Fix 2.4: delete from detail page and go back to library
+  const handleDelete = async () => {
+    if (!id) return
+    if (!confirm("Permanently delete this memory? This cannot be undone.")) return
+    setDeleting(true)
+    const ok = await api.deleteMemory(id)
+    if (ok) navigate("/memories")
+    else setDeleting(false)
+  }
 
   if (loading) {
     return (
@@ -53,10 +64,28 @@ export default function MemoryDetail() {
       
       {/* LEFT COLUMN: Main Memory Detail */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <button className="back-btn" onClick={() => navigate(-1)}>
-          <ArrowLeft size={16} />
-          Back
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <button className="back-btn" onClick={() => navigate(-1)}>
+            <ArrowLeft size={16} />
+            Back
+          </button>
+          {/* Fix 2.4: Delete button */}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              background: deleting ? '#fca5a5' : '#DC2626',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              transition: 'background 0.15s',
+            }}
+          >
+            <Trash2 size={15} />
+            {deleting ? 'Deleting…' : 'Delete Memory'}
+          </button>
+        </div>
 
         {/* Title */}
         <div style={{ marginBottom: '36px' }}>

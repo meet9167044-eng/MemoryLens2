@@ -10,6 +10,7 @@ export default function Overview() {
   const [insights, setInsights] = useState<InsightStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null) // Fix 4.4
   const navigate = useNavigate()
 
   const fetchData = async () => {
@@ -25,6 +26,21 @@ export default function Overview() {
 
   useEffect(() => { fetchData() }, [])
 
+  // Fix 4.4: real backend health check
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/health')
+        setBackendOnline(res.ok)
+      } catch {
+        setBackendOnline(false)
+      }
+    }
+    check()
+    const interval = setInterval(check, 30_000) // re-check every 30s
+    return () => clearInterval(interval)
+  }, [])
+
   const today = format(new Date(), "EEEE, MMMM do")
 
   return (
@@ -32,7 +48,7 @@ export default function Overview() {
       <div className="page-header">
         <div>
           <p className="page-date">{today}</p>
-          <h1 className="page-title letterpress">Good morning, Virat.</h1>
+          <h1 className="page-title letterpress">Good morning.</h1>
           <p className="page-subtitle" style={{ maxWidth: '480px' }}>
             Here is a summary of what your digital memory captured recently.
           </p>
@@ -120,7 +136,13 @@ export default function Overview() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.875rem', color: 'var(--secondary-text)' }}>Pipeline</span>
-                  <span className="badge badge-success">Running</span>
+                  {/* Fix 4.4: real status badge */}
+                  {backendOnline === null
+                    ? <span className="badge badge-secondary">Checking…</span>
+                    : backendOnline
+                    ? <span className="badge badge-success">Online ✓</span>
+                    : <span className="badge" style={{ background: '#FEE2E2', color: '#DC2626' }}>Offline ✗</span>
+                  }
                 </div>
               </div>
             </div>

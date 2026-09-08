@@ -19,6 +19,7 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
   const [progress, setProgress] = useState<{ name: string; status: string; id?: string }[]>([])
   const [errorMsg, setErrorMsg] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)  // Fix 3.1: folder upload
 
   // ── File validation
   const validateFile = (f: File): string | null => {
@@ -49,33 +50,38 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragOver(true) }
   const onDragLeave = () => setDragOver(false)
 
-  // ── Upload
+  // ── Upload (Fix 3.3: use bulk endpoint when multiple files are queued)
   const handleUpload = async () => {
     if (!files.length) return
     setState("uploading")
     setProgress(files.map(f => ({ name: f.name, status: "Uploading…" })))
 
-    const results: { id: string; name: string }[] = []
-
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i]
-      try {
+    try {
+      if (files.length > 1) {
+        // ── Bulk path: send all files in one request
+        setProgress(files.map(f => ({ name: f.name, status: "Uploading (bulk)…" })))
+        const res = await api.bulkUpload(files)
+        const ids: string[] = res.screenshot_ids || []
+        const results = ids.map((id, i) => ({ id, name: files[i]?.name ?? `file_${i}` }))
+        setProgress(files.map((f, i) => ({ name: f.name, status: "Processing…", id: ids[i] })))
+        if (results.length > 0) {
+          setState("polling")
+          await pollStatuses(results)
+        } else {
+          throw new Error("No files processed by bulk endpoint.")
+        }
+      } else {
+        // ── Single file path (unchanged behaviour)
+        const f = files[0]
         const res = await api.uploadFile(f)
         if (!res) throw new Error("No response from server")
-        results.push({ id: res.screenshot_id, name: f.name })
-        setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: "Processing…", id: res.screenshot_id } : p))
-      } catch (err: any) {
-        setProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: `Failed: ${err.message}` } : p))
+        setProgress([{ name: f.name, status: "Processing…", id: res.screenshot_id }])
+        setState("polling")
+        await pollStatuses([{ id: res.screenshot_id, name: f.name }])
       }
-    }
-
-    // Poll status for each uploaded file
-    if (results.length > 0) {
-      setState("polling")
-      await pollStatuses(results)
-    } else {
+    } catch (err: any) {
       setState("error")
-      setErrorMsg("All uploads failed. Make sure the backend is running.")
+      setErrorMsg(err.message || "Upload failed. Make sure the backend is running.")
     }
   }
 
@@ -183,6 +189,17 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
                   onChange={e => addFiles(e.target.files)}
                   style={{ display: 'none' }}
                 />
+                {/* Fix 3.1: hidden folder input */}
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  accept={ALLOWED.join(",")}
+                  multiple
+                  // @ts-ignore — webkitdirectory not in React types but supported in all browsers
+                  webkitdirectory="true"
+                  onChange={e => addFiles(e.target.files)}
+                  style={{ display: 'none' }}
+                />
               </div>
 
               {/* Error */}
@@ -212,6 +229,15 @@ export default function UploadModal({ onClose, onSuccess }: Props) {
               {/* Actions */}
               <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
                 <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+                {/* Fix 3.1: Upload Folder button */}
+                <button
+                  className="btn btn-secondary"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => folderInputRef.current?.click()}
+                  title="Select a folder — all images inside will be added"
+                >
+                  📁 Folder
+                </button>
                 <button
                   className="btn btn-primary"
                   style={{ flex: 2, justifyContent: 'center' }}

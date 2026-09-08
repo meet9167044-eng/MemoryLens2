@@ -12,6 +12,8 @@ Stories are computed on-the-fly (not persisted) and returned by the
 
 from __future__ import annotations
 
+from sqlalchemy import case
+
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
@@ -50,10 +52,15 @@ def rebuild_all_stories(db: Session):
     db.query(Story).delete()
     db.commit()
 
+    # Fix 1.1: Use created_at as fallback so memories without EXIF timestamps
+    # are still included in story grouping (previously they were silently excluded).
+    ts_expr = case(
+        (Memory.captured_at.isnot(None), Memory.captured_at),
+        else_=Memory.created_at,
+    )
     memories = (
         db.query(Memory)
-        .filter(Memory.captured_at.isnot(None))
-        .order_by(Memory.captured_at.asc())
+        .order_by(ts_expr.asc())
         .all()
     )
 
@@ -66,12 +73,21 @@ def rebuild_all_stories(db: Session):
     
     idx = 1
 
-    for mem in memories:
-        ts = mem.captured_at
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+    def _make_aware(dt: datetime) -> datetime:
+        """Ensure a datetime is timezone-aware (UTC). Fix 1.2: prevents TypeError."""
+        if dt is not None and dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
 
-        if current_story is None or (ts - current_story.end_time) > gap:
+    for mem in memories:
+        # Fix 1.1: fall back to created_at if captured_at is missing
+        ts = _make_aware(mem.captured_at or mem.created_at)
+        if ts is None:
+            continue
+
+        # Fix 1.2: ensure end_time is also timezone-aware before subtracting
+        end_ts = _make_aware(current_story.end_time) if current_story else None
+        if current_story is None or (ts - end_ts) > gap:
             # Save previous story
             if current_story:
                 current_story.title = _generate_story_title(db, current_story.memories, idx - 1)
@@ -136,7 +152,8 @@ def _generate_story_title(db: Session, memories: list[Memory], idx: int) -> str:
     if top_apps:
         return f"Session with {' & '.join(top_apps)}"
 
-    ts = memories[0].captured_at
+    # Fix 1.1: fall back to created_at for title timestamp too
+    ts = memories[0].captured_at or memories[0].created_at
     if ts:
         return f"Session {idx} — {ts.strftime('%b %d, %H:%M')}"
     return f"Story {idx}"
